@@ -1,12 +1,78 @@
 //! Storage port — repository traits for persistence.
-//!
-//! TODO(M1): Define trait `EntityRepository` with methods:
-//!   - `async fn save(&self, entity: &Entity) -> Result<()>`
-//!   - `async fn get(&self, id: &EntityId) -> Result<Option<Entity>>`
-//!   - `async fn list(&self) -> Result<Vec<Entity>>`
-//!   - `async fn delete(&self, id: &EntityId) -> Result<()>`
-//!
-//! TODO(M1): Define trait `DeviceRepository` (similar CRUD pattern).
-//! TODO(M1): Define trait `AreaRepository` (similar CRUD pattern).
-//! TODO(M2): Define trait `EventStore` for append-only event storage.
-//! TODO(M3): Define trait `AutomationRepository`.
+
+use std::future::Future;
+
+use minihub_domain::area::Area;
+use minihub_domain::device::Device;
+use minihub_domain::entity::Entity;
+use minihub_domain::error::MiniHubError;
+use minihub_domain::id::{AreaId, DeviceId, EntityId};
+
+/// Repository for [`Entity`] persistence.
+pub trait EntityRepository {
+    /// Create a new entity in storage.
+    fn create(&self, entity: Entity) -> impl Future<Output = Result<Entity, MiniHubError>> + Send;
+
+    /// Get an entity by its unique identifier.
+    fn get_by_id(
+        &self,
+        id: EntityId,
+    ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send;
+
+    /// Get all entities.
+    fn get_all(&self) -> impl Future<Output = Result<Vec<Entity>, MiniHubError>> + Send;
+
+    /// Find entities belonging to a specific device.
+    fn find_by_device_id(
+        &self,
+        device_id: DeviceId,
+    ) -> impl Future<Output = Result<Vec<Entity>, MiniHubError>> + Send;
+
+    /// Update an existing entity.
+    fn update(&self, entity: Entity) -> impl Future<Output = Result<Entity, MiniHubError>> + Send;
+
+    /// Delete an entity by its unique identifier.
+    fn delete(&self, id: EntityId) -> impl Future<Output = Result<(), MiniHubError>> + Send;
+}
+
+/// Repository for [`Device`] persistence.
+pub trait DeviceRepository {
+    /// Create a new device in storage.
+    fn create(&self, device: Device) -> impl Future<Output = Result<Device, MiniHubError>> + Send;
+
+    /// Get a device by its unique identifier.
+    fn get_by_id(
+        &self,
+        id: DeviceId,
+    ) -> impl Future<Output = Result<Option<Device>, MiniHubError>> + Send;
+
+    /// Get all devices.
+    fn get_all(&self) -> impl Future<Output = Result<Vec<Device>, MiniHubError>> + Send;
+
+    /// Update an existing device.
+    fn update(&self, device: Device) -> impl Future<Output = Result<Device, MiniHubError>> + Send;
+
+    /// Delete a device by its unique identifier.
+    fn delete(&self, id: DeviceId) -> impl Future<Output = Result<(), MiniHubError>> + Send;
+}
+
+/// Repository for [`Area`] persistence.
+pub trait AreaRepository {
+    /// Create a new area in storage.
+    fn create(&self, area: Area) -> impl Future<Output = Result<Area, MiniHubError>> + Send;
+
+    /// Get an area by its unique identifier.
+    fn get_by_id(
+        &self,
+        id: AreaId,
+    ) -> impl Future<Output = Result<Option<Area>, MiniHubError>> + Send;
+
+    /// Get all areas.
+    fn get_all(&self) -> impl Future<Output = Result<Vec<Area>, MiniHubError>> + Send;
+
+    /// Update an existing area.
+    fn update(&self, area: Area) -> impl Future<Output = Result<Area, MiniHubError>> + Send;
+
+    /// Delete an area by its unique identifier.
+    fn delete(&self, id: AreaId) -> impl Future<Output = Result<(), MiniHubError>> + Send;
+}
