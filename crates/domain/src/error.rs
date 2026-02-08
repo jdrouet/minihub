@@ -35,6 +35,9 @@ pub enum MiniHubError {
 
     #[error("Not found")]
     NotFound(#[from] NotFoundError),
+
+    #[error("Storage error")]
+    Storage(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// Convenience alias used throughout the domain and application layers.
