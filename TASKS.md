@@ -248,29 +248,52 @@ impl Display for EntityId {
 // Similar for DeviceId, AreaId, AutomationId, EventId
 ```
 
-Create error types:
+Create error types with typed source errors (no `String` variants):
 
 ```rust
 // crates/domain/src/error.rs
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+pub enum ValidationError {
+    #[error("entity_id cannot be empty")]
+    EmptyEntityId,
+    #[error("friendly_name cannot be empty")]
+    EmptyFriendlyName,
+    #[error("name cannot be empty")]
+    EmptyName,
+    #[error("at least one action required")]
+    NoActions,
+    #[error("port must be non-zero")]
+    InvalidPort,
+}
+
+#[derive(Debug, Error)]
+#[error("entity {id} not found")]
+pub struct NotFoundError {
+    pub id: String,
+}
+
+#[derive(Debug, Error)]
 pub enum MiniHubError {
-    #[error("Validation error: {0}")]
-    Validation(String),
-    
-    #[error("Not found: {0}")]
-    NotFound(String),
-    
-    #[error("Storage error: {0}")]
-    Storage(String),
-    
-    #[error("Internal error: {0}")]
-    Internal(String),
+    #[error("Validation error")]
+    Validation(#[from] ValidationError),
+
+    #[error("Not found")]
+    NotFound(#[from] NotFoundError),
+
+    #[error("Storage error")]
+    Storage(#[from] StorageError),
+
+    #[error("Internal error")]
+    Internal(#[from] InternalError),
 }
 
 pub type Result<T> = std::result::Result<T, MiniHubError>;
 ```
+
+Each adapter crate defines its own concrete error types (e.g., `StorageError` wrapping `sqlx::Error`,
+`InternalError` wrapping serde/IO errors) and converts via `#[from]`.
 
 Create time utilities:
 
@@ -330,7 +353,7 @@ pub enum AttributeValue {
 }
 
 // crates/domain/src/entity.rs
-use crate::{id::{EntityId, DeviceId}, time::Timestamp, error::{Result, MiniHubError}};
+use crate::{id::{EntityId, DeviceId}, time::Timestamp, error::{Result, ValidationError}};
 use std::collections::HashMap;
 use crate::{EntityState, AttributeValue};
 
@@ -369,10 +392,10 @@ impl Entity {
     
     pub fn validate(&self) -> Result<()> {
         if self.entity_id.is_empty() {
-            return Err(MiniHubError::Validation("entity_id cannot be empty".to_string()));
+            return Err(ValidationError::EmptyEntityId)?;
         }
         if self.friendly_name.is_empty() {
-            return Err(MiniHubError::Validation("friendly_name cannot be empty".to_string()));
+            return Err(ValidationError::EmptyFriendlyName)?;
         }
         Ok(())
     }
@@ -420,7 +443,7 @@ serde_json = "1.0"
 
 ```rust
 // crates/domain/src/device.rs
-use crate::{id::{DeviceId, AreaId}, error::{Result, MiniHubError}};
+use crate::{id::{DeviceId, AreaId}, error::{Result, ValidationError}};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -439,14 +462,14 @@ impl Device {
     
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
-            return Err(MiniHubError::Validation("name cannot be empty".to_string()));
+            return Err(ValidationError::EmptyName)?;
         }
         Ok(())
     }
 }
 
 // crates/domain/src/area.rs
-use crate::{id::AreaId, error::{Result, MiniHubError}};
+use crate::{id::AreaId, error::{Result, ValidationError}};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -463,7 +486,7 @@ impl Area {
     
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
-            return Err(MiniHubError::Validation("name cannot be empty".to_string()));
+            return Err(ValidationError::EmptyName)?;
         }
         Ok(())
     }
@@ -520,7 +543,7 @@ async-trait = "0.1"
 // crates/app/src/services/entity_service.rs
 use std::sync::Arc;
 use minihub_domain::Entity;
-use minihub_domain::{id::EntityId, error::{Result, MiniHubError}, time::now};
+use minihub_domain::{id::EntityId, error::{Result, NotFoundError}, time::now};
 use crate::ports::EntityRepository;
 
 pub struct EntityService {
@@ -542,7 +565,7 @@ impl EntityService {
     pub async fn get_entity(&self, id: EntityId) -> Result<Entity> {
         self.repo.get_by_id(id)
             .await?
-            .ok_or_else(|| MiniHubError::NotFound(format!("Entity {} not found", id)))
+            .ok_or_else(|| NotFoundError { id: id.to_string() })?
     }
     
     pub async fn list_entities(&self) -> Result<Vec<Entity>> {
@@ -620,7 +643,7 @@ Similar structure to EntityService, with CRUD operations for Device and Area dom
 | Task ID | Description | Effort | Dependencies | DoD | Key Files |
 |---------|-------------|--------|--------------|-----|-----------|
 | M2-T1 | Implement SQLite connection pool + migrations | M | M1-T4 | `Database` struct wraps `SqlitePool`. Async `initialize` function creates pool, runs migrations. Migration files for initial schema (entities, devices, areas tables). Integration test verifies pool creation and migration execution. | `crates/adapters/adapter_storage_sqlite_sqlx/src/db.rs`, `crates/adapters/adapter_storage_sqlite_sqlx/migrations/001_initial.sql` |
-| M2-T2 | Implement SqliteEntityRepository | M | M2-T1, M1-T4 | `SqliteEntityRepository` struct implements `EntityRepository` trait. All CRUD methods use sqlx for async queries. Proper error mapping from sqlx to MiniHubError. Integration tests against real SQLite database (use in-memory or temp file). | `crates/adapters/adapter_storage_sqlite_sqlx/src/entity_repository.rs`, `crates/adapters/adapter_storage_sqlite_sqlx/src/entity_repository_test.rs` |
+| M2-T2 | Implement SqliteEntityRepository | M | M2-T1, M1-T4 | `SqliteEntityRepository` struct implements `EntityRepository` trait. All CRUD methods use sqlx for async queries. Typed `StorageError` wrapping `sqlx::Error` with `#[from]` conversion to `MiniHubError`. Integration tests against real SQLite database (use in-memory or temp file). | `crates/adapters/adapter_storage_sqlite_sqlx/src/entity_repository.rs`, `crates/adapters/adapter_storage_sqlite_sqlx/src/entity_repository_test.rs` |
 | M2-T3 | Implement SqliteDeviceRepository, SqliteAreaRepository | S | M2-T1 | Similar to M2-T2. Implement both repositories with full CRUD operations. Integration tests for both. | `crates/adapters/adapter_storage_sqlite_sqlx/src/device_repository.rs`, `crates/adapters/adapter_storage_sqlite_sqlx/src/area_repository.rs` |
 | M2-T4 | Implement axum router skeleton + app state | M | M1-T5 | `AppState` struct holds `Arc` references to all services. Create axum `Router` with health check endpoint `/`. Server starts on configurable port (default 8080). Graceful startup logging. | `crates/adapters/adapter_http_axum/src/state.rs`, `crates/adapters/adapter_http_axum/src/router.rs`, `crates/adapters/adapter_http_axum/src/lib.rs` |
 | M2-T5 | Implement JSON REST API handlers | L | M2-T4, M2-T2 | REST endpoints for entities, devices, areas: `GET /api/entities`, `POST /api/entities`, `GET /api/entities/:id`, `PUT /api/entities/:id/state`, `DELETE /api/entities/:id`. Similar for `/api/devices` and `/api/areas`. Proper HTTP status codes (200, 201, 404, 400, 500). JSON request/response bodies. Error handling middleware. Integration tests using HTTP client (reqwest or hyper). | `crates/adapters/adapter_http_axum/src/handlers/api/entities.rs`, `crates/adapters/adapter_http_axum/src/handlers/api/devices.rs`, `crates/adapters/adapter_http_axum/src/handlers/api/areas.rs`, `crates/adapters/adapter_http_axum/src/handlers/api/mod.rs` |
@@ -718,7 +741,7 @@ use async_trait::async_trait;
 use sqlx::SqlitePool;
 use minihub_app::ports::EntityRepository;
 use minihub_domain::Entity;
-use minihub_domain::{id::{EntityId, DeviceId}, error::{Result, MiniHubError}};
+use minihub_domain::{id::{EntityId, DeviceId}, error::Result};
 
 pub struct SqliteEntityRepository {
     pool: SqlitePool,
@@ -733,8 +756,7 @@ impl SqliteEntityRepository {
 #[async_trait]
 impl EntityRepository for SqliteEntityRepository {
     async fn create(&self, entity: Entity) -> Result<Entity> {
-        let attributes_json = serde_json::to_string(&entity.attributes)
-            .map_err(|e| MiniHubError::Internal(e.to_string()))?;
+        let attributes_json = serde_json::to_string(&entity.attributes)?;
         
         sqlx::query(
             r#"
@@ -751,8 +773,7 @@ impl EntityRepository for SqliteEntityRepository {
         .bind(entity.last_changed.to_rfc3339())
         .bind(entity.last_updated.to_rfc3339())
         .execute(&self.pool)
-        .await
-        .map_err(|e| MiniHubError::Storage(e.to_string()))?;
+        .await?;
         
         Ok(entity)
     }
@@ -763,8 +784,7 @@ impl EntityRepository for SqliteEntityRepository {
         )
         .bind(id.to_string())
         .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| MiniHubError::Storage(e.to_string()))?;
+        .await?;
         
         Ok(row.map(|r| r.into_entity()).transpose()?)
     }
@@ -905,7 +925,7 @@ pub async fn get_entity(
     
     let entity = state.entity_service.get_entity(entity_id)
         .await
-        .map_err(|e| match e {
+        .map_err(|err| match err {
             MiniHubError::NotFound(_) => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
@@ -1315,7 +1335,7 @@ pub trait EventPublisher: Send + Sync {
 // crates/app/src/event_bus.rs
 use async_trait::async_trait;
 use minihub_domain::Event;
-use minihub_domain::error::{Result, MiniHubError};
+use minihub_domain::error::Result;
 use tokio::sync::broadcast::{self, Sender, Receiver};
 use crate::ports::EventPublisher;
 
@@ -1335,7 +1355,8 @@ impl EventPublisher for InProcessEventBus {
     async fn publish(&self, event: Event) -> Result<()> {
         self.sender.send(event)
             .map(|_| ())
-            .map_err(|e| MiniHubError::Internal(format!("Failed to publish event: {}", e)))
+            .map_err(|err| BroadcastError(err.to_string()))?;
+        Ok(())
     }
     
     fn subscribe(&self) -> Receiver<Event> {
@@ -1401,7 +1422,7 @@ use async_trait::async_trait;
 use sqlx::SqlitePool;
 use minihub_app::ports::EventStore;
 use minihub_domain::Event;
-use minihub_domain::{id::{EventId, EntityId}, error::{Result, MiniHubError}};
+use minihub_domain::{id::{EventId, EntityId}, error::Result};
 
 pub struct SqliteEventStore {
     pool: SqlitePool,
@@ -1428,8 +1449,7 @@ impl EventStore for SqliteEventStore {
         .bind(event.timestamp.to_rfc3339())
         .bind(serde_json::to_string(&event.data)?)
         .execute(&self.pool)
-        .await
-        .map_err(|e| MiniHubError::Storage(e.to_string()))?;
+        .await?;
         
         Ok(event)
     }
@@ -1440,8 +1460,7 @@ impl EventStore for SqliteEventStore {
         )
         .bind(limit as i64)
         .fetch_all(&self.pool)
-        .await
-        .map_err(|e| MiniHubError::Storage(e.to_string()))?;
+        .await?;
         
         rows.into_iter()
             .map(|r| r.into_event())
@@ -1541,10 +1560,10 @@ pub struct Automation {
 impl Automation {
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
-            return Err(MiniHubError::Validation("name cannot be empty".into()));
+            return Err(ValidationError::EmptyName)?;
         }
         if self.actions.is_empty() {
-            return Err(MiniHubError::Validation("at least one action required".into()));
+            return Err(ValidationError::NoActions)?;
         }
         Ok(())
     }
@@ -1979,8 +1998,8 @@ pub struct VirtualIntegration {
     devices: Arc<RwLock<HashMap<EntityId, Box<dyn VirtualDevice>>>>,
 }
 
-impl VirtualIntegration {
-    pub fn new() -> Self {
+impl Default for VirtualIntegration {
+    fn default() -> Self {
         Self {
             context: None,
             devices: Arc::new(RwLock::new(HashMap::new())),
@@ -2141,7 +2160,7 @@ use minihub_app::integration::Integration;
 #[tokio::test]
 async fn test_virtual_integration_lifecycle() {
     // Setup
-    let mut integration = VirtualIntegration::new();
+    let mut integration = VirtualIntegration::default();
     
     // Initialize
     integration.initialize().await.unwrap();
@@ -2357,7 +2376,7 @@ impl Config {
     
     fn validate(&self) -> Result<()> {
         if self.server.port == 0 {
-            return Err(MiniHubError::Validation("port must be non-zero".into()));
+            return Err(ValidationError::InvalidPort)?;
         }
         Ok(())
     }
@@ -2495,15 +2514,15 @@ struct ErrorResponse {
 
 impl IntoResponse for MiniHubError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
-            MiniHubError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            MiniHubError::Validation(msg) => (StatusCode::BAD_REQUEST, msg),
-            MiniHubError::Storage(msg) => {
-                tracing::error!("storage error: {}", msg);
+        let (status, message) = match &self {
+            MiniHubError::NotFound(err) => (StatusCode::NOT_FOUND, err.to_string()),
+            MiniHubError::Validation(err) => (StatusCode::BAD_REQUEST, err.to_string()),
+            MiniHubError::Storage(err) => {
+                tracing::error!("storage error: {err:?}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
             },
-            MiniHubError::Internal(msg) => {
-                tracing::error!("internal error: {}", msg);
+            MiniHubError::Internal(err) => {
+                tracing::error!("internal error: {err:?}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
             },
         };
@@ -2517,8 +2536,7 @@ pub async fn get_entity(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<EntityResponse>, MiniHubError> {
-    let entity_id = EntityId::from_str(&id)
-        .map_err(|e| MiniHubError::Validation(format!("invalid entity ID: {}", e)))?;
+    let entity_id = EntityId::from_str(&id)?;
     
     let entity = state.entity_service.get_entity(entity_id).await?;
     
@@ -2772,7 +2790,7 @@ rumqttc = "0.24"
 use async_trait::async_trait;
 use minihub_app::integration::{Integration, IntegrationContext};
 use minihub_domain::{Device, Entity, EntityState};
-use minihub_domain::error::{Result, MiniHubError};
+use minihub_domain::error::Result;
 use rumqttc::{AsyncClient, MqttOptions, QoS, Event, Packet};
 use serde::{Deserialize, Serialize};
 
@@ -2856,13 +2874,12 @@ impl Integration for MqttIntegration {
         self.context = Some(context.clone());
         
         let client = self.client.as_ref()
-            .ok_or_else(|| MiniHubError::Internal("MQTT client not initialized".to_string()))?;
+            .ok_or(MqttError::ClientNotInitialized)?;
         
         // Subscribe to discovery topic
         let discovery_topic = format!("{}/+/+/config", self.config.discovery_prefix);
         client.subscribe(&discovery_topic, QoS::AtLeastOnce)
-            .await
-            .map_err(|e| MiniHubError::Internal(format!("Failed to subscribe: {}", e)))?;
+            .await?;
         
         tracing::info!("subscribed to discovery topic: {}", discovery_topic);
         
@@ -2875,9 +2892,7 @@ impl Integration for MqttIntegration {
         tracing::info!("stopping MQTT integration");
         
         if let Some(client) = &self.client {
-            client.disconnect()
-                .await
-                .map_err(|e| MiniHubError::Internal(format!("Failed to disconnect: {}", e)))?;
+            client.disconnect().await?;
         }
         
         Ok(())
@@ -2896,7 +2911,7 @@ impl Integration for MqttIntegration {
         data: serde_json::Value,
     ) -> Result<()> {
         let client = self.client.as_ref()
-            .ok_or_else(|| MiniHubError::Internal("MQTT client not initialized".to_string()))?;
+            .ok_or(MqttError::ClientNotInitialized)?;
         
         // Publish command to appropriate topic
         // Format depends on device protocol (e.g., Home Assistant MQTT, Tasmota, etc.)
@@ -2907,8 +2922,7 @@ impl Integration for MqttIntegration {
         }).to_string();
         
         client.publish(command_topic, QoS::AtLeastOnce, false, payload)
-            .await
-            .map_err(|e| MiniHubError::Internal(format!("Failed to publish: {}", e)))?;
+            .await?;
         
         Ok(())
     }

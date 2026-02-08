@@ -353,13 +353,75 @@ This pattern ensures:
 
 Do not use JavaScript in the dashboard. Use server-rendered HTML with forms (PRG pattern) and `<meta http-equiv="refresh">` for live updates. No JS, no WASM-requiring-JS, no npm.
 
+### Error types
+
+Use `thiserror` with typed source errors and `#[from]` conversion. Do not use `String` as the inner type — typed errors preserve the original error chain and produce better traces:
+
+```rust
+// Bad — String erases the original error type
+#[derive(Debug, thiserror::Error)]
+pub enum MyError {
+    #[error("Storage error: {0}")]
+    Storage(String),
+}
+
+// Usage loses the source:
+.map_err(|err| MyError::Storage(err.to_string()))?;
+```
+
+```rust
+// Good — typed source error with #[from]
+#[derive(Debug, thiserror::Error)]
+pub enum MyError {
+    #[error("Storage error")]
+    Storage(#[from] StorageError),
+}
+
+// Usage preserves the source:
+let result = do_storage_thing()?; // auto-converts via From
+```
+
+Do not include the source error in the `#[error("...")]` message (e.g., `{0}`). The source error is already part of the error chain and will appear in the trace — duplicating it in the display message adds noise:
+
+```rust
+// Bad — duplicates the source in the display message
+#[error("Validation error: {0}")]
+Validation(#[from] ValidationError),
+
+// Good — source is in the chain, not repeated
+#[error("Validation error")]
+Validation(#[from] ValidationError),
+```
+
+### Prefer `Default` over `new()` without arguments
+
+When a constructor takes no arguments, implement `Default` instead of `new()`:
+
+```rust
+// Bad
+impl MyStruct {
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+}
+
+// Good
+impl Default for MyStruct {
+    fn default() -> Self {
+        Self { items: Vec::new() }
+    }
+}
+```
+
+This integrates with Rust idioms like `#[derive(Default)]` and `Option::unwrap_or_default()`.
+
 ### Code quality
 
 - Run `just fmt` before committing
 - Run `just clippy` and fix all warnings
 - Prefer editing existing files over creating new ones
 - Maintain at least the milestone's coverage target using `cargo llvm-cov`
-- Use `thiserror` for error types, not manual `impl Display + Error`
+- Use `thiserror` for error types (see [Error types](#error-types) above)
 - Write doc comments for all public items
 
 ## Reporting issues
