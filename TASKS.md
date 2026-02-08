@@ -13,7 +13,7 @@
 - [Coverage Targets](#coverage-targets)
 - [Milestones](#milestones)
   - [M0 — Scaffold & Plan ✅](#m0--scaffold--plan-)
-  - [M1 — Domain Model & App Core](#m1--domain-model--app-core)
+  - [M1 — Domain Model & App Core ✅](#m1--domain-model--app-core-)
   - [M2 — HTTP API + SQLite Storage + Dashboard](#m2--http-api--sqlite-storage--dashboard)
   - [M3 — Events & Automations](#m3--events--automations)
   - [M4 — Virtual Integration](#m4--virtual-integration)
@@ -190,11 +190,11 @@ clean:
 
 ---
 
-### M1 — Domain Model & App Core
+### M1 — Domain Model & App Core ✅
 
 **Goal**: Implement core domain types, shared utilities, and application service layer with comprehensive unit tests. Achieve 40% code coverage.
 
-**Status**: Not Started
+**Status**: ✅ Done
 
 **Prerequisites**: M0 complete
 
@@ -204,12 +204,12 @@ clean:
 
 | Task ID | Description | Effort | Dependencies | DoD | Key Files |
 |---------|-------------|--------|--------------|-----|-----------|
-| M1-T1 | Implement shared types | S | None | `EntityId`, `DeviceId`, `AreaId`, `AutomationId` types implemented using newtype pattern in `minihub-domain`. `MiniHubError` with variants for validation, not-found, storage errors. `Timestamp` utility for UTC time handling. Unit tests for all types. | `crates/domain/src/lib.rs`, `crates/domain/src/id.rs`, `crates/domain/src/error.rs`, `crates/domain/src/time.rs` |
-| M1-T2 | Implement Entity, EntityState, AttributeValue | M | M1-T1 | `Entity` struct with id, device_id, entity_id (string), friendly_name, state, attributes, last_changed, last_updated. `EntityState` enum with On/Off/Unknown/Unavailable. `AttributeValue` enum supporting String/Int/Float/Bool/Json. Builder pattern for Entity. Validation logic (non-empty names, valid state transitions). Unit tests covering validation, state changes, attribute manipulation. | `crates/domain/src/entity.rs`, `crates/domain/src/entity_state.rs`, `crates/domain/src/attribute_value.rs` |
-| M1-T3 | Implement Device, Area | S | M1-T1 | `Device` struct with id, name, manufacturer, model, area_id. `Area` struct with id, name, parent_id. Builder patterns. Validation (non-empty names). Unit tests. | `crates/domain/src/device.rs`, `crates/domain/src/area.rs` |
-| M1-T4 | Define storage port traits | M | M1-T2, M1-T3 | `EntityRepository` trait with methods: `create`, `get_by_id`, `get_all`, `update`, `delete`, `find_by_device_id`. `DeviceRepository` trait with CRUD methods. `AreaRepository` trait with CRUD methods. All methods return `Result<T, MiniHubError>`. Async trait using `#[async_trait]`. Documentation on each trait method. | `crates/app/src/ports/entity_repository.rs`, `crates/app/src/ports/device_repository.rs`, `crates/app/src/ports/area_repository.rs`, `crates/app/src/ports/mod.rs` |
-| M1-T5 | Implement EntityService | M | M1-T4 | `EntityService` struct that wraps `Arc<dyn EntityRepository>`. Methods: `create_entity`, `get_entity`, `list_entities`, `update_entity_state`, `update_entity_attributes`, `delete_entity`. Business logic validation before repository calls. Unit tests using mock repository (e.g., HashMap-based in-memory mock). Achieve >= 40% coverage on app crate. | `crates/app/src/services/entity_service.rs`, `crates/app/src/services/entity_service_test.rs` or inline tests |
-| M1-T6 | Implement DeviceService, AreaService | S | M1-T4 | Similar to EntityService. `DeviceService` with CRUD operations. `AreaService` with CRUD operations and optional parent-child relationship queries. Unit tests with mock repositories. | `crates/app/src/services/device_service.rs`, `crates/app/src/services/area_service.rs` |
+| M1-T1 | ✅ Implement shared types | S | None | `EntityId`, `DeviceId`, `AreaId`, `AutomationId` types implemented using newtype pattern in `minihub-domain`. `MiniHubError` with variants for validation, not-found, storage errors. `Timestamp` utility for UTC time handling. Unit tests for all types. | `crates/domain/src/lib.rs`, `crates/domain/src/id.rs`, `crates/domain/src/error.rs`, `crates/domain/src/time.rs` |
+| M1-T2 | ✅ Implement Entity, EntityState, AttributeValue | M | M1-T1 | `Entity` struct with id, device_id, entity_id (string), friendly_name, state, attributes, last_changed, last_updated. `EntityState` enum with On/Off/Unknown/Unavailable. `AttributeValue` enum supporting String/Int/Float/Bool/Json. Builder pattern for Entity. Validation logic (non-empty names, valid state transitions). Unit tests covering validation, state changes, attribute manipulation. | `crates/domain/src/entity.rs`, `crates/domain/src/entity_state.rs`, `crates/domain/src/attribute_value.rs` |
+| M1-T3 | ✅ Implement Device, Area | S | M1-T1 | `Device` struct with id, name, manufacturer, model, area_id. `Area` struct with id, name, parent_id. Builder patterns. Validation (non-empty names). Unit tests. | `crates/domain/src/device.rs`, `crates/domain/src/area.rs` |
+| M1-T4 | ✅ Define storage port traits | M | M1-T2, M1-T3 | `EntityRepository` trait with methods: `create`, `get_by_id`, `get_all`, `update`, `delete`, `find_by_device_id`. `DeviceRepository` trait with CRUD methods. `AreaRepository` trait with CRUD methods. All methods return `Result<T, MiniHubError>`. Async trait using `#[async_trait]`. Documentation on each trait method. | `crates/app/src/ports/entity_repository.rs`, `crates/app/src/ports/device_repository.rs`, `crates/app/src/ports/area_repository.rs`, `crates/app/src/ports/mod.rs` |
+| M1-T5 | ✅ Implement EntityService | M | M1-T4 | `EntityService` struct that wraps `Arc<dyn EntityRepository>`. Methods: `create_entity`, `get_entity`, `list_entities`, `update_entity_state`, `update_entity_attributes`, `delete_entity`. Business logic validation before repository calls. Unit tests using mock repository (e.g., HashMap-based in-memory mock). Achieve >= 40% coverage on app crate. | `crates/app/src/services/entity_service.rs`, `crates/app/src/services/entity_service_test.rs` or inline tests |
+| M1-T6 | ✅ Implement DeviceService, AreaService | S | M1-T4 | Similar to EntityService. `DeviceService` with CRUD operations. `AreaService` with CRUD operations and optional parent-child relationship queries. Unit tests with mock repositories. | `crates/app/src/services/device_service.rs`, `crates/app/src/services/area_service.rs` |
 
 #### Detailed Task Breakdown
 
