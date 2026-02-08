@@ -12,8 +12,10 @@
 //! Depends on `minihub-app` (for port traits) and `minihub-domain` (for domain types).
 //! The `app` and `domain` crates must never reference this adapter.
 
+mod entity_repo;
 mod error;
 mod pool;
 
+pub use entity_repo::SqliteEntityRepository;
 pub use error::StorageError;
 pub use pool::{Config, Database};
