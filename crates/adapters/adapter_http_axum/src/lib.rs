@@ -16,5 +16,7 @@
 //! (for domain types used in request/response mapping). Never leaks axum types
 //! into the domain.
 
+pub mod api;
+mod error;
 pub mod router;
 pub mod state;
