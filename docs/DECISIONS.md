@@ -12,6 +12,7 @@ minihub is a tiny Rust-only home automation server.
 - [ADR-004: Hexagonal architecture with Cargo workspace](#adr-004-hexagonal-architecture-with-cargo-workspace)
 - [ADR-005: Dual MIT/Apache-2.0 license](#adr-005-dual-mitapache-20-license)
 - [ADR-006: cargo-llvm-cov for code coverage](#adr-006-cargo-llvm-cov-for-code-coverage)
+- [ADR-007: Use askama for HTML templating](#adr-007-use-askama-for-html-templating)
 
 ---
 
@@ -225,3 +226,38 @@ Use cargo-llvm-cov as the code coverage tool. It leverages LLVM's source-based c
 - Requires installing llvm-tools-preview rustup component
 - Slightly more complex setup than some alternatives
 - LLVM-based tooling can have larger binary sizes during testing
+
+---
+
+## ADR-007: Use askama for HTML templating
+
+**Status:** Accepted
+
+**Date:** 2026-02-08
+
+### Context
+
+The no-JavaScript SSR dashboard needs an HTML templating approach. The templates must produce complete HTML pages server-side, integrate well with Rust's type system, and be easy to read and maintain.
+
+### Decision
+
+Use askama for compile-time-checked Jinja2-style HTML templates. Templates live as `.html` files alongside the Rust code, with type-safe variable binding verified at compile time.
+
+### Alternatives Considered
+
+- **maud**: Rust macro DSL for HTML. Keeps everything in Rust code but mixes markup with logic, and compatibility with the latest axum version can lag behind.
+- **Manual string building**: No dependencies but error-prone, no compile-time guarantees, and poor ergonomics for anything beyond trivial markup.
+
+### Consequences
+
+**Positive:**
+- Compile-time checked — template variables and types are verified during build
+- Clean separation of HTML templates from Rust logic
+- Familiar Jinja2/Django-style syntax accessible to non-Rust contributors
+- Template inheritance for shared layout
+- Straightforward axum integration via manual `IntoResponse` rendering to `Html`
+
+**Negative:**
+- Separate template files to manage alongside Rust code
+- Jinja2 syntax has a learning curve for those unfamiliar with it
+- Template errors surface as compile errors, which can be cryptic

@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 minihub-domain = { workspace = true }
 minihub-app = { workspace = true }
+askama = { workspace = true }
 axum = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

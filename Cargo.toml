@@ -32,6 +32,7 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 tokio = { version = "1", features = ["macros", "rt"] }
 axum = "0.8"
+askama = "0.15"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tower = "0.5"
 
