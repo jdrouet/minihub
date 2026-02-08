@@ -1,0 +1,13 @@
+[package]
+name = "minihub-app"
+description = "Application use-cases and port definitions (traits). Orchestrates domain logic without knowing about adapters."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+minihub-domain = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/domain",
+    "crates/app",
+    "crates/adapters/adapter_http_axum",
+    "crates/adapters/adapter_storage_sqlite_sqlx",
+    "crates/adapters/adapter_mqtt",
+    "crates/bin/minihubd",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/YOUR_USER/minihub"
+
+[workspace.dependencies]
+# Domain & application crates (internal)
+minihub-domain = { path = "crates/domain" }
+minihub-app = { path = "crates/app" }
+minihub-adapter-http-axum = { path = "crates/adapters/adapter_http_axum" }
+minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/adapter_storage_sqlite_sqlx" }
+minihub-adapter-mqtt = { path = "crates/adapters/adapter_mqtt" }
+
+# External dependencies (pinned versions chosen at implementation time)
+# axum = "0.7"
+# sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
+# tokio = { version = "1", features = ["full"] }
+# serde = { version = "1", features = ["derive"] }
+# serde_json = "1"
+# thiserror = "1"
+# tracing = "0.1"
+# tracing-subscriber = "0.3"
+# uuid = { version = "1", features = ["v4"] }
+# chrono = { version = "0.4", features = ["serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

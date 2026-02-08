@@ -1,0 +1,17 @@
+[package]
+name = "minihubd"
+description = "Composition root — wires all adapters together and starts the minihub server."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+minihub-domain = { workspace = true }
+minihub-app = { workspace = true }
+minihub-adapter-http-axum = { workspace = true }
+minihub-adapter-storage-sqlite-sqlx = { workspace = true }
+# minihub-adapter-mqtt = { workspace = true }  # Enable when MQTT support is added
+
+[lints]
+workspace = true

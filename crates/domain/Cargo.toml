@@ -1,0 +1,12 @@
+[package]
+name = "minihub-domain"
+description = "Domain model for minihub — entities, value objects, and domain logic. No IO, no frameworks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
