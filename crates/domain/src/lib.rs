@@ -17,25 +17,9 @@
 //! It must never import anything from `app`, adapters, or external IO crates.
 //! All IO boundaries are expressed as traits in the `app` crate (ports).
 
-// --- Foundational types (IDs, errors, time) ---
-
-// TODO(M1): Define typed newtypes for IDs.
-// TODO(M1): Define a base error enum.
-// TODO(M1): Define timestamp helpers.
-// TODO(M2): Define configuration primitives.
-
 pub mod error;
 pub mod id;
 pub mod time;
-
-// --- Domain model ---
-
-// TODO(M1): Implement `entity` module — Entity, `EntityState`, `EntityAttributes`.
-// TODO(M1): Implement `device` module — Device, `DeviceInfo`.
-// TODO(M1): Implement `area` module — Area.
-// TODO(M2): Implement `service` module — `ServiceDefinition`, `ServiceCall`.
-// TODO(M2): Implement `event` module — Event, `EventPayload`.
-// TODO(M3): Implement `automation` module — Automation, Trigger, Condition, Action.
 
 pub mod area;
 pub mod automation;

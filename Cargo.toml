@@ -11,8 +11,8 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/YOUR_USER/minihub"
 
@@ -24,17 +24,18 @@ minihub-adapter-http-axum = { path = "crates/adapters/adapter_http_axum" }
 minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/adapter_storage_sqlite_sqlx" }
 minihub-adapter-mqtt = { path = "crates/adapters/adapter_mqtt" }
 
-# External dependencies (pinned versions chosen at implementation time)
+# External dependencies
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+tokio = { version = "1", features = ["macros", "rt"] }
 # axum = "0.7"
 # sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
 # tokio = { version = "1", features = ["full"] }
-# serde = { version = "1", features = ["derive"] }
-# serde_json = "1"
-# thiserror = "1"
 # tracing = "0.1"
 # tracing-subscriber = "0.3"
-# uuid = { version = "1", features = ["v4"] }
-# chrono = { version = "0.4", features = ["serde"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

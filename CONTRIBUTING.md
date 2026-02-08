@@ -5,7 +5,7 @@ Thank you for your interest in contributing to minihub!
 ## Getting started
 
 1. Fork and clone the repository.
-2. Install Rust stable (>= 1.75) via [rustup](https://rustup.rs/).
+2. Install Rust stable (>= 1.85) via [rustup](https://rustup.rs/).
 3. Install [just](https://github.com/casey/just): `cargo install just`
 4. Install [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov): `cargo install cargo-llvm-cov`
 5. Run `just check` to verify everything works.
