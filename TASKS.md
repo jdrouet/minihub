@@ -12,7 +12,7 @@
 - [Quality Gates](#quality-gates)
 - [Coverage Targets](#coverage-targets)
 - [Milestones](#milestones)
-  - [M0 — Scaffold & Plan](#m0--scaffold--plan-current--done)
+  - [M0 — Scaffold & Plan ✅](#m0--scaffold--plan-)
   - [M1 — Domain Model & App Core](#m1--domain-model--app-core)
   - [M2 — HTTP API + SQLite Storage + Dashboard](#m2--http-api--sqlite-storage--dashboard)
   - [M3 — Events & Automations](#m3--events--automations)
@@ -79,11 +79,11 @@ minihub/
 
 ## Milestones
 
-### M0 — Scaffold & Plan (CURRENT — DONE)
+### M0 — Scaffold & Plan ✅
 
 **Goal**: Establish workspace structure, documentation, and development tooling.
 
-**Status**: DONE
+**Status**: ✅ Done
 
 **Prerequisites**: None
 
@@ -93,10 +93,10 @@ minihub/
 
 | Task ID | Description | Effort | Dependencies | DoD | Key Files |
 |---------|-------------|--------|--------------|-----|-----------|
-| M0-T1 | Create workspace layout | S | None | All `Cargo.toml` files exist at correct locations. `cargo check` passes on all empty crates. Workspace compiles without errors. | `Cargo.toml`, `crates/*/Cargo.toml`, `crates/adapters/*/Cargo.toml`, `crates/bin/minihubd/Cargo.toml` |
-| M0-T2 | Write documentation | M | None | `README.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TASKS.md`, `CONTRIBUTING.md` exist and contain comprehensive information about the project structure, goals, and development process. | `README.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TASKS.md`, `CONTRIBUTING.md` |
-| M0-T3 | Create CI workflow stub | S | None | `.github/workflows/ci.yml` exists with jobs for fmt, clippy, test, and coverage placeholders. Workflow triggers on push and PR. | `.github/workflows/ci.yml` |
-| M0-T4 | Create Justfile | S | None | `Justfile` exists with recipes for common development tasks: `check`, `test`, `fmt`, `clippy`, `run`, `coverage`, `clean`. `just --list` displays all available commands. | `Justfile` |
+| M0-T1 | ✅ Create workspace layout | S | None | All `Cargo.toml` files exist at correct locations. `cargo check` passes on all empty crates. Workspace compiles without errors. | `Cargo.toml`, `crates/*/Cargo.toml`, `crates/adapters/*/Cargo.toml`, `crates/bin/minihubd/Cargo.toml` |
+| M0-T2 | ✅ Write documentation | M | None | `README.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TASKS.md`, `CONTRIBUTING.md` exist and contain comprehensive information about the project structure, goals, and development process. | `README.md`, `ARCHITECTURE.md`, `DECISIONS.md`, `TASKS.md`, `CONTRIBUTING.md` |
+| M0-T3 | ✅ Create CI workflow stub | S | None | `.github/workflows/ci.yml` exists with jobs for fmt, clippy, test, and coverage placeholders. Workflow triggers on push and PR. | `.github/workflows/ci.yml` |
+| M0-T4 | ✅ Create Justfile | S | None | `Justfile` exists with recipes for common development tasks: `check`, `test`, `fmt`, `clippy`, `run`, `coverage`, `clean`. `just --list` displays all available commands. | `Justfile` |
 
 #### Detailed Task Breakdown
 
