@@ -2199,7 +2199,7 @@ async fn test_virtual_sensor_polling() {
 
 **Goal**: Production-readiness: structured logging, configuration, graceful shutdown, error handling audit, CSS styling. Achieve 80% coverage.
 
-**Status**: Not Started
+**Status**: Done (branch: M5-polish-harden)
 
 **Prerequisites**: M4 complete
 
