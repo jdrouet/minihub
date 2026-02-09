@@ -10,10 +10,12 @@ use http_body_util::BodyExt;
 use minihub_adapter_http_axum::router;
 use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_storage_sqlite_sqlx::{
-    Config, SqliteAreaRepository, SqliteDeviceRepository, SqliteEntityRepository,
+    Config, SqliteAreaRepository, SqliteAutomationRepository, SqliteDeviceRepository,
+    SqliteEntityRepository, SqliteEventStore,
 };
 use minihub_app::event_bus::InProcessEventBus;
 use minihub_app::services::area_service::AreaService;
+use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
 use tower::ServiceExt;
@@ -31,7 +33,9 @@ async fn app() -> axum::Router {
 
     let entity_repo = SqliteEntityRepository::new(pool.clone());
     let device_repo = SqliteDeviceRepository::new(pool.clone());
-    let area_repo = SqliteAreaRepository::new(pool);
+    let area_repo = SqliteAreaRepository::new(pool.clone());
+    let event_store = SqliteEventStore::new(pool.clone());
+    let automation_repo = SqliteAutomationRepository::new(pool);
 
     let event_bus = InProcessEventBus::new(256);
 
@@ -39,6 +43,8 @@ async fn app() -> axum::Router {
         EntityService::new(entity_repo, event_bus),
         DeviceService::new(device_repo),
         AreaService::new(area_repo),
+        event_store,
+        AutomationService::new(automation_repo),
     );
 
     router::build(state)
@@ -165,6 +171,58 @@ async fn should_render_areas_page() {
     )
     .unwrap();
     assert!(body.contains("Areas"));
+}
+
+#[tokio::test]
+async fn should_render_events_page() {
+    let resp = app()
+        .await
+        .oneshot(
+            Request::builder()
+                .uri("/events")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = String::from_utf8(
+        resp.into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(body.contains("Event Log"));
+}
+
+#[tokio::test]
+async fn should_render_automations_page() {
+    let resp = app()
+        .await
+        .oneshot(
+            Request::builder()
+                .uri("/automations")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = String::from_utf8(
+        resp.into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(body.contains("Automations"));
 }
 
 // ---------------------------------------------------------------------------

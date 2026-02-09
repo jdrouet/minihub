@@ -1,4 +1,4 @@
-//! Dashboard pages for entities.
+//! Dashboard pages for automations.
 
 use std::str::FromStr;
 
@@ -11,47 +11,46 @@ use minihub_app::ports::{
     AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
     EventStore,
 };
-use minihub_domain::entity::{Entity, EntityState};
-use minihub_domain::id::EntityId;
+use minihub_domain::automation::Automation;
+use minihub_domain::id::AutomationId;
 
 use crate::error::ApiError;
 use crate::state::AppState;
 
-/// Entity list page template.
+/// Automation list page template.
 #[derive(Template)]
-#[template(path = "entity_list.html")]
-pub struct EntityListTemplate {
+#[template(path = "automation_list.html")]
+pub struct AutomationListTemplate {
     refresh_seconds: u32,
-    entities: Vec<Entity>,
+    automations: Vec<Automation>,
 }
 
-impl IntoResponse for EntityListTemplate {
+impl IntoResponse for AutomationListTemplate {
     fn into_response(self) -> Response {
         Html(self.to_string()).into_response()
     }
 }
 
-/// Entity detail page template.
+/// Automation detail page template.
 #[derive(Template)]
-#[template(path = "entity_detail.html")]
-pub struct EntityDetailTemplate {
+#[template(path = "automation_detail.html")]
+pub struct AutomationDetailTemplate {
     refresh_seconds: u32,
-    entity: Entity,
+    automation: Automation,
 }
 
-impl IntoResponse for EntityDetailTemplate {
+impl IntoResponse for AutomationDetailTemplate {
     fn into_response(self) -> Response {
         Html(self.to_string()).into_response()
     }
 }
 
-/// Response from the state update form handler (PRG pattern).
-pub enum UpdateStateResponse {
-    /// Redirect back to entity detail page.
+/// Response from the toggle-enabled form handler (PRG pattern).
+pub enum ToggleEnabledResponse {
     Redirect(Redirect),
 }
 
-impl IntoResponse for UpdateStateResponse {
+impl IntoResponse for ToggleEnabledResponse {
     fn into_response(self) -> Response {
         match self {
             Self::Redirect(redirect) => redirect.into_response(),
@@ -59,10 +58,10 @@ impl IntoResponse for UpdateStateResponse {
     }
 }
 
-/// `GET /entities` — list all entities.
+/// `GET /automations` — list all automations.
 pub async fn list<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
-) -> EntityListTemplate
+) -> AutomationListTemplate
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -71,23 +70,23 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let entities = state
-        .entity_service
-        .list_entities()
+    let automations = state
+        .automation_service
+        .list_automations()
         .await
         .unwrap_or_default();
 
-    EntityListTemplate {
-        refresh_seconds: 5,
-        entities,
+    AutomationListTemplate {
+        refresh_seconds: 10,
+        automations,
     }
 }
 
-/// `GET /entities/:id` — entity detail + control form.
+/// `GET /automations/:id` — automation detail page.
 pub async fn detail<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
-) -> Result<EntityDetailTemplate, ApiError>
+) -> Result<AutomationDetailTemplate, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -96,31 +95,34 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let entity_id = EntityId::from_str(&id).map_err(|_| {
+    let automation_id = AutomationId::from_str(&id).map_err(|_| {
         ApiError::from(minihub_domain::error::MiniHubError::Validation(
-            minihub_domain::error::ValidationError::EmptyEntityId,
+            minihub_domain::error::ValidationError::EmptyName,
         ))
     })?;
-    let entity = state.entity_service.get_entity(entity_id).await?;
+    let automation = state
+        .automation_service
+        .get_automation(automation_id)
+        .await?;
 
-    Ok(EntityDetailTemplate {
-        refresh_seconds: 5,
-        entity,
+    Ok(AutomationDetailTemplate {
+        refresh_seconds: 10,
+        automation,
     })
 }
 
-/// Form data for state update.
+/// Form data for toggling enabled status.
 #[derive(Deserialize)]
-pub struct StateForm {
-    pub state: EntityState,
+pub struct ToggleForm {
+    pub enabled: String,
 }
 
-/// `POST /entities/:id/state` — update entity state (PRG).
-pub async fn update_state<ER, DR, AR, EP, ES, AUR>(
+/// `POST /automations/:id/toggle` — enable/disable an automation (PRG).
+pub async fn toggle_enabled<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
-    Form(form): Form<StateForm>,
-) -> Result<UpdateStateResponse, ApiError>
+    Form(form): Form<ToggleForm>,
+) -> Result<ToggleEnabledResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -129,17 +131,23 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let entity_id = EntityId::from_str(&id).map_err(|_| {
+    let automation_id = AutomationId::from_str(&id).map_err(|_| {
         ApiError::from(minihub_domain::error::MiniHubError::Validation(
-            minihub_domain::error::ValidationError::EmptyEntityId,
+            minihub_domain::error::ValidationError::EmptyName,
         ))
     })?;
-    state
-        .entity_service
-        .update_entity_state(entity_id, form.state)
+    let mut automation = state
+        .automation_service
+        .get_automation(automation_id)
         .await?;
 
-    Ok(UpdateStateResponse::Redirect(Redirect::to(&format!(
-        "/entities/{id}"
+    automation.enabled = form.enabled == "true";
+    state
+        .automation_service
+        .update_automation(automation)
+        .await?;
+
+    Ok(ToggleEnabledResponse::Redirect(Redirect::to(&format!(
+        "/automations/{id}"
     ))))
 }

@@ -4,7 +4,10 @@ use askama::Template;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Response};
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository, EventPublisher};
+use minihub_app::ports::{
+    AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
+    EventStore,
+};
 use minihub_domain::entity::EntityState;
 
 use crate::state::AppState;
@@ -27,12 +30,16 @@ impl IntoResponse for HomeTemplate {
 }
 
 /// `GET /` — system overview.
-pub async fn index<ER, DR, AR, EP>(State(state): State<AppState<ER, DR, AR, EP>>) -> HomeTemplate
+pub async fn index<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+) -> HomeTemplate
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
     EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let entities = state
         .entity_service

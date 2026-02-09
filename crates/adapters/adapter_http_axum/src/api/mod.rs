@@ -10,45 +10,56 @@ pub mod entities;
 use axum::Router;
 use axum::routing::{get, put};
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository, EventPublisher};
+use minihub_app::ports::{
+    AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
+    EventStore,
+};
 
 use crate::state::AppState;
 
 /// Build the `/api` sub-router.
-pub fn routes<ER, DR, AR, EP>() -> Router<AppState<ER, DR, AR, EP>>
+pub fn routes<ER, DR, AR, EP, ES, AUR>() -> Router<AppState<ER, DR, AR, EP, ES, AUR>>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
     EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     Router::new()
         .route(
             "/entities",
-            get(entities::list::<ER, DR, AR, EP>).post(entities::create::<ER, DR, AR, EP>),
+            get(entities::list::<ER, DR, AR, EP, ES, AUR>)
+                .post(entities::create::<ER, DR, AR, EP, ES, AUR>),
         )
         .route(
             "/entities/{id}",
-            get(entities::get::<ER, DR, AR, EP>).delete(entities::delete::<ER, DR, AR, EP>),
+            get(entities::get::<ER, DR, AR, EP, ES, AUR>)
+                .delete(entities::delete::<ER, DR, AR, EP, ES, AUR>),
         )
         .route(
             "/entities/{id}/state",
-            put(entities::update_state::<ER, DR, AR, EP>),
+            put(entities::update_state::<ER, DR, AR, EP, ES, AUR>),
         )
         .route(
             "/devices",
-            get(devices::list::<ER, DR, AR, EP>).post(devices::create::<ER, DR, AR, EP>),
+            get(devices::list::<ER, DR, AR, EP, ES, AUR>)
+                .post(devices::create::<ER, DR, AR, EP, ES, AUR>),
         )
         .route(
             "/devices/{id}",
-            get(devices::get::<ER, DR, AR, EP>).delete(devices::delete::<ER, DR, AR, EP>),
+            get(devices::get::<ER, DR, AR, EP, ES, AUR>)
+                .delete(devices::delete::<ER, DR, AR, EP, ES, AUR>),
         )
         .route(
             "/areas",
-            get(areas::list::<ER, DR, AR, EP>).post(areas::create::<ER, DR, AR, EP>),
+            get(areas::list::<ER, DR, AR, EP, ES, AUR>)
+                .post(areas::create::<ER, DR, AR, EP, ES, AUR>),
         )
         .route(
             "/areas/{id}",
-            get(areas::get::<ER, DR, AR, EP>).delete(areas::delete::<ER, DR, AR, EP>),
+            get(areas::get::<ER, DR, AR, EP, ES, AUR>)
+                .delete(areas::delete::<ER, DR, AR, EP, ES, AUR>),
         )
 }

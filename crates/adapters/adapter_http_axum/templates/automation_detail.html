@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ automation.name }}{% endblock %}
+
+{% block content %}
+<h1>{{ automation.name }}</h1>
+
+<div class="card">
+    <table>
+        <tr><th>ID</th><td>{{ automation.id }}</td></tr>
+        <tr><th>Status</th><td>
+            {% if automation.enabled %}
+            <span class="badge badge-on">enabled</span>
+            {% else %}
+            <span class="badge badge-off">disabled</span>
+            {% endif %}
+        </td></tr>
+        <tr><th>Trigger</th><td>{{ automation.trigger }}</td></tr>
+        <tr><th>Conditions</th><td>
+            {% if automation.conditions.is_empty() %}
+            <em>none</em>
+            {% else %}
+            <ul>
+                {% for c in automation.conditions %}
+                <li>{{ c }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </td></tr>
+        <tr><th>Actions</th><td>
+            <ul>
+                {% for a in automation.actions %}
+                <li>{{ a }}</li>
+                {% endfor %}
+            </ul>
+        </td></tr>
+        <tr><th>Last triggered</th><td>
+            {% match automation.last_triggered %}
+            {% when Some with (ts) %}{{ ts.format("%Y-%m-%d %H:%M:%S") }}{% when None %}never{% endmatch %}
+        </td></tr>
+    </table>
+</div>
+
+<h2>Controls</h2>
+<div class="actions">
+    {% if automation.enabled %}
+    <form method="post" action="/automations/{{ automation.id }}/toggle">
+        <input type="hidden" name="enabled" value="false">
+        <button type="submit">Disable</button>
+    </form>
+    {% else %}
+    <form method="post" action="/automations/{{ automation.id }}/toggle">
+        <input type="hidden" name="enabled" value="true">
+        <button type="submit">Enable</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
