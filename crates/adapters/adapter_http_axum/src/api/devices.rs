@@ -8,7 +8,10 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository};
+use minihub_app::ports::{
+    AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
+    EventStore,
+};
 use minihub_domain::device::Device;
 use minihub_domain::error::MiniHubError;
 use minihub_domain::id::{AreaId, DeviceId};
@@ -78,27 +81,33 @@ impl IntoResponse for DeleteResponse {
 }
 
 /// `GET /api/devices`
-pub async fn list<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn list<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
 ) -> Result<ListResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let devices = state.device_service.list_devices().await?;
     Ok(ListResponse::Ok(Json(devices)))
 }
 
 /// `GET /api/devices/:id`
-pub async fn get<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn get<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
 ) -> Result<GetResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let device_id = DeviceId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
@@ -110,14 +119,17 @@ where
 }
 
 /// `POST /api/devices`
-pub async fn create<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn create<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Json(req): Json<CreateDeviceRequest>,
 ) -> Result<CreateResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let area_id = req
         .area_id
@@ -146,14 +158,17 @@ where
 }
 
 /// `DELETE /api/devices/:id`
-pub async fn delete<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn delete<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
 ) -> Result<DeleteResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let device_id = DeviceId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(

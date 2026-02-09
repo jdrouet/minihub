@@ -1,4 +1,4 @@
-//! JSON REST handlers for areas.
+//! JSON REST handlers for automations.
 
 use std::str::FromStr;
 
@@ -12,23 +12,36 @@ use minihub_app::ports::{
     AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
     EventStore,
 };
-use minihub_domain::area::Area;
+use minihub_domain::automation::{Action, Automation, Condition, Trigger};
 use minihub_domain::error::MiniHubError;
-use minihub_domain::id::AreaId;
+use minihub_domain::id::AutomationId;
 
 use crate::error::ApiError;
 use crate::state::AppState;
 
-/// Request body for creating an area.
+/// Request body for creating an automation.
 #[derive(Deserialize)]
-pub struct CreateAreaRequest {
+pub struct CreateAutomationRequest {
     pub name: String,
-    pub parent_id: Option<String>,
+    pub enabled: Option<bool>,
+    pub trigger: Trigger,
+    pub conditions: Option<Vec<Condition>>,
+    pub actions: Vec<Action>,
+}
+
+/// Request body for updating an automation.
+#[derive(Deserialize)]
+pub struct UpdateAutomationRequest {
+    pub name: String,
+    pub enabled: bool,
+    pub trigger: Trigger,
+    pub conditions: Vec<Condition>,
+    pub actions: Vec<Action>,
 }
 
 /// Possible responses from the list endpoint.
 pub enum ListResponse {
-    Ok(Json<Vec<Area>>),
+    Ok(Json<Vec<Automation>>),
 }
 
 impl IntoResponse for ListResponse {
@@ -41,7 +54,7 @@ impl IntoResponse for ListResponse {
 
 /// Possible responses from the get endpoint.
 pub enum GetResponse {
-    Ok(Json<Area>),
+    Ok(Json<Automation>),
 }
 
 impl IntoResponse for GetResponse {
@@ -54,7 +67,7 @@ impl IntoResponse for GetResponse {
 
 /// Possible responses from the create endpoint.
 pub enum CreateResponse {
-    Created(Json<Area>),
+    Created(Json<Automation>),
 }
 
 impl IntoResponse for CreateResponse {
@@ -78,7 +91,7 @@ impl IntoResponse for DeleteResponse {
     }
 }
 
-/// `GET /api/areas`
+/// `GET /api/automations` — list all automations.
 pub async fn list<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
 ) -> Result<ListResponse, ApiError>
@@ -90,11 +103,11 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let areas = state.area_service.list_areas().await?;
-    Ok(ListResponse::Ok(Json(areas)))
+    let automations = state.automation_service.list_automations().await?;
+    Ok(ListResponse::Ok(Json(automations)))
 }
 
-/// `GET /api/areas/:id`
+/// `GET /api/automations/:id` — get automation by ID.
 pub async fn get<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
@@ -107,19 +120,22 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let area_id = AreaId::from_str(&id).map_err(|_| {
+    let automation_id = AutomationId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
             minihub_domain::error::ValidationError::EmptyName,
         ))
     })?;
-    let area = state.area_service.get_area(area_id).await?;
-    Ok(GetResponse::Ok(Json(area)))
+    let automation = state
+        .automation_service
+        .get_automation(automation_id)
+        .await?;
+    Ok(GetResponse::Ok(Json(automation)))
 }
 
-/// `POST /api/areas`
+/// `POST /api/automations` — create a new automation.
 pub async fn create<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
-    Json(req): Json<CreateAreaRequest>,
+    Json(req): Json<CreateAutomationRequest>,
 ) -> Result<CreateResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
@@ -129,27 +145,78 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let parent_id = req
-        .parent_id
-        .map(|s| AreaId::from_str(&s))
-        .transpose()
-        .map_err(|_| {
-            ApiError::from(MiniHubError::Validation(
-                minihub_domain::error::ValidationError::EmptyName,
-            ))
-        })?;
+    let mut builder = Automation::builder().name(req.name).trigger(req.trigger);
 
-    let mut builder = Area::builder().name(req.name);
-    if let Some(parent_id) = parent_id {
-        builder = builder.parent_id(parent_id);
+    if let Some(enabled) = req.enabled {
+        builder = builder.enabled(enabled);
     }
 
-    let area = builder.build()?;
-    let created = state.area_service.create_area(area).await?;
+    if let Some(conditions) = req.conditions {
+        for c in conditions {
+            builder = builder.condition(c);
+        }
+    }
+
+    for a in req.actions {
+        builder = builder.action(a);
+    }
+
+    let automation = builder.build()?;
+    let created = state
+        .automation_service
+        .create_automation(automation)
+        .await?;
     Ok(CreateResponse::Created(Json(created)))
 }
 
-/// `DELETE /api/areas/:id`
+/// `PUT /api/automations/:id` — update an existing automation.
+pub async fn update<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateAutomationRequest>,
+) -> Result<GetResponse, ApiError>
+where
+    ER: EntityRepository + Send + Sync + 'static,
+    DR: DeviceRepository + Send + Sync + 'static,
+    AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
+{
+    let automation_id = AutomationId::from_str(&id).map_err(|_| {
+        ApiError::from(MiniHubError::Validation(
+            minihub_domain::error::ValidationError::EmptyName,
+        ))
+    })?;
+
+    // Verify it exists
+    state
+        .automation_service
+        .get_automation(automation_id)
+        .await?;
+
+    let mut builder = Automation::builder()
+        .id(automation_id)
+        .name(req.name)
+        .enabled(req.enabled)
+        .trigger(req.trigger);
+
+    for c in req.conditions {
+        builder = builder.condition(c);
+    }
+    for a in req.actions {
+        builder = builder.action(a);
+    }
+
+    let automation = builder.build()?;
+    let updated = state
+        .automation_service
+        .update_automation(automation)
+        .await?;
+    Ok(GetResponse::Ok(Json(updated)))
+}
+
+/// `DELETE /api/automations/:id` — delete an automation.
 pub async fn delete<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
@@ -162,11 +229,14 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let area_id = AreaId::from_str(&id).map_err(|_| {
+    let automation_id = AutomationId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
             minihub_domain::error::ValidationError::EmptyName,
         ))
     })?;
-    state.area_service.delete_area(area_id).await?;
+    state
+        .automation_service
+        .delete_automation(automation_id)
+        .await?;
     Ok(DeleteResponse::NoContent)
 }

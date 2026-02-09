@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Events{% endblock %}
+
+{% block content %}
+<h1>Event Log</h1>
+
+{% if events.is_empty() %}
+<p>No events recorded.</p>
+{% else %}
+<table>
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Type</th>
+            <th>Entity</th>
+            <th>Data</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for event in events %}
+        <tr>
+            <td>{{ event.timestamp.format("%Y-%m-%d %H:%M:%S") }}</td>
+            <td><span class="badge">{{ event.event_type }}</span></td>
+            <td>{% match event.entity_id %}{% when Some with (id) %}{{ id }}{% when None %}—{% endmatch %}</td>
+            <td><code>{{ event.data }}</code></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

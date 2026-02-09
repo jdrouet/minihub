@@ -8,8 +8,12 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository};
+use minihub_app::ports::{
+    AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
+    EventStore,
+};
 use minihub_domain::entity::{Entity, EntityState};
+use minihub_domain::error::MiniHubError;
 use minihub_domain::id::{DeviceId, EntityId};
 
 use crate::error::ApiError;
@@ -82,27 +86,33 @@ impl IntoResponse for DeleteResponse {
 }
 
 /// `GET /api/entities`
-pub async fn list<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn list<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
 ) -> Result<ListResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let entities = state.entity_service.list_entities().await?;
     Ok(ListResponse::Ok(Json(entities)))
 }
 
 /// `GET /api/entities/:id`
-pub async fn get<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn get<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
 ) -> Result<GetResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let entity_id = EntityId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
@@ -113,17 +123,18 @@ where
     Ok(GetResponse::Ok(Json(entity)))
 }
 
-use minihub_domain::error::MiniHubError;
-
 /// `POST /api/entities`
-pub async fn create<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn create<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Json(req): Json<CreateEntityRequest>,
 ) -> Result<CreateResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let device_id = DeviceId::from_str(&req.device_id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
@@ -142,8 +153,8 @@ where
 }
 
 /// `PUT /api/entities/:id/state`
-pub async fn update_state<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn update_state<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
     Json(req): Json<UpdateStateRequest>,
 ) -> Result<GetResponse, ApiError>
@@ -151,6 +162,9 @@ where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let entity_id = EntityId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
@@ -165,14 +179,17 @@ where
 }
 
 /// `DELETE /api/entities/:id`
-pub async fn delete<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn delete<ER, DR, AR, EP, ES, AUR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
 ) -> Result<DeleteResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
+    ES: EventStore + Send + Sync + 'static,
+    AUR: AutomationRepository + Send + Sync + 'static,
 {
     let entity_id = EntityId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
