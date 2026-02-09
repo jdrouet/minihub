@@ -162,21 +162,14 @@ impl EntityRepository for SqliteEntityRepository {
         }
     }
 
-    fn find_by_entity_id(
-        &self,
-        entity_id: &str,
-    ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        let entity_id = entity_id.to_string();
-        async move {
-            let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ENTITY_ID)
-                .bind(&entity_id)
-                .fetch_optional(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn find_by_entity_id(&self, entity_id: &str) -> Result<Option<Entity>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ENTITY_ID)
+            .bind(entity_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(Wrapper::maybe(row))
-        }
+        Ok(Wrapper::maybe(row))
     }
 
     fn update(&self, entity: Entity) -> impl Future<Output = Result<Entity, MiniHubError>> + Send {

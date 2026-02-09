@@ -117,31 +117,30 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
     /// storage error propagated from the repository.
     #[tracing::instrument(skip(self, entity), fields(entity_id = %entity.entity_id))]
     pub async fn upsert_entity(&self, entity: Entity) -> Result<Entity, MiniHubError> {
-        match self.repo.find_by_entity_id(&entity.entity_id).await? {
-            Some(existing) => {
-                let mut updated = existing;
-                let old_state = updated.state.clone();
-                updated.state.clone_from(&entity.state);
-                updated.attributes.clone_from(&entity.attributes);
-                updated.last_updated = now();
-                if old_state != entity.state {
-                    updated.last_changed = now();
-                }
-                let saved = self.repo.update(updated).await?;
-                if old_state != entity.state {
-                    let event = Event::new(
-                        EventType::StateChanged,
-                        Some(saved.id),
-                        serde_json::json!({
-                            "old_state": old_state,
-                            "new_state": entity.state,
-                        }),
-                    );
-                    let _ = self.publisher.publish(event).await;
-                }
-                Ok(saved)
+        if let Some(existing) = self.repo.find_by_entity_id(&entity.entity_id).await? {
+            let mut updated = existing;
+            let old_state = updated.state.clone();
+            updated.state.clone_from(&entity.state);
+            updated.attributes.clone_from(&entity.attributes);
+            updated.last_updated = now();
+            if old_state != entity.state {
+                updated.last_changed = now();
             }
-            None => self.create_entity(entity).await,
+            let saved = self.repo.update(updated).await?;
+            if old_state != entity.state {
+                let event = Event::new(
+                    EventType::StateChanged,
+                    Some(saved.id),
+                    serde_json::json!({
+                        "old_state": old_state,
+                        "new_state": entity.state,
+                    }),
+                );
+                let _ = self.publisher.publish(event).await;
+            }
+            Ok(saved)
+        } else {
+            self.create_entity(entity).await
         }
     }
 
@@ -452,7 +451,7 @@ mod tests {
             .unwrap();
 
         let result = svc.upsert_entity(updated).await.unwrap();
-        // Should preserve the original UUID
+        // Should preserve the original UUID and reflect the new state
         assert_eq!(result.id, original_id);
         assert_eq!(result.state, EntityState::On);
         assert_eq!(
