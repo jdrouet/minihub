@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity.friendly_name }}{% endblock %}
+
+{% block content %}
+<h1>{{ entity.friendly_name }}</h1>
+
+<div class="card">
+    <table>
+        <tbody>
+            <tr><td>ID</td><td>{{ entity.id }}</td></tr>
+            <tr><td>Entity ID</td><td>{{ entity.entity_id }}</td></tr>
+            <tr><td>State</td><td><span class="badge badge-{{ entity.state }}">{{ entity.state }}</span></td></tr>
+            <tr><td>Device</td><td>{{ entity.device_id }}</td></tr>
+            <tr><td>Last changed</td><td>{{ entity.last_changed }}</td></tr>
+            <tr><td>Last updated</td><td>{{ entity.last_updated }}</td></tr>
+        </tbody>
+    </table>
+
+    {% if !entity.attributes.is_empty() %}
+    <h3>Attributes</h3>
+    <table>
+        <thead>
+            <tr><th>Key</th><th>Value</th></tr>
+        </thead>
+        <tbody>
+            {% for (key, value) in &entity.attributes %}
+            <tr>
+                <td>{{ key }}</td>
+                <td>{{ value|fmt("{:?}") }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3>Control</h3>
+    <div class="actions">
+        <form method="POST" action="/entities/{{ entity.id }}/state">
+            <input type="hidden" name="state" value="on">
+            <button type="submit">Turn On</button>
+        </form>
+        <form method="POST" action="/entities/{{ entity.id }}/state">
+            <input type="hidden" name="state" value="off">
+            <button type="submit">Turn Off</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

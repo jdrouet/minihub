@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Devices{% endblock %}
+
+{% block content %}
+<h1>Devices</h1>
+
+{% if devices.is_empty() %}
+<p>No devices registered.</p>
+{% else %}
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Manufacturer</th>
+            <th>Model</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for device in devices %}
+        <tr>
+            <td>{{ device.name }}</td>
+            <td>{% match device.manufacturer %}{% when Some with (m) %}{{ m }}{% when None %}&mdash;{% endmatch %}</td>
+            <td>{% match device.model %}{% when Some with (m) %}{{ m }}{% when None %}&mdash;{% endmatch %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}
