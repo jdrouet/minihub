@@ -15,14 +15,16 @@ use minihub_adapter_storage_sqlite_sqlx::{
 };
 use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
-use minihub_app::ports::Integration;
+use minihub_app::ports::{EventStore, Integration};
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
+use std::sync::Arc;
 use tower::ServiceExt;
 
-/// Build a fully-wired router backed by an in-memory `SQLite` database.
+/// Build a fully-wired router backed by an in-memory `SQLite` database,
+/// including an event-bus → event-store subscriber (mirroring `main.rs`).
 async fn app() -> axum::Router {
     let db = Config {
         database_url: "sqlite::memory:".to_string(),
@@ -40,13 +42,28 @@ async fn app() -> axum::Router {
     let automation_repo = SqliteAutomationRepository::new(pool);
 
     let event_bus = InProcessEventBus::new(256);
+    let mut event_rx = event_bus.subscribe();
 
-    let state = AppState::new(
-        EntityService::new(entity_repo, event_bus),
-        DeviceService::new(device_repo),
-        AreaService::new(area_repo),
+    let entity_service = Arc::new(EntityService::new(entity_repo, event_bus));
+    let device_service = Arc::new(DeviceService::new(device_repo));
+    let area_service = Arc::new(AreaService::new(area_repo));
+    let event_store = Arc::new(event_store);
+    let automation_service = Arc::new(AutomationService::new(automation_repo));
+
+    // Wire event-bus → event-store subscriber (same as main.rs)
+    let es = Arc::clone(&event_store);
+    tokio::spawn(async move {
+        while let Ok(event) = event_rx.recv().await {
+            let _ = es.store(event).await;
+        }
+    });
+
+    let state = AppState::from_arcs(
+        entity_service,
+        device_service,
+        area_service,
         event_store,
-        AutomationService::new(automation_repo),
+        automation_service,
     );
 
     router::build(state)
@@ -780,10 +797,10 @@ async fn should_list_events_after_entity_state_change() {
         .await
         .unwrap();
 
-    // Note: Events are published via InProcessEventBus but NOT stored to
-    // SqliteEventStore (no event-store subscriber wired yet). The events API
-    // reads from the store. This test verifies the endpoint works (returns 200)
-    // even when there are no persisted events.
+    // Give the subscriber task time to persist the events
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // Events should now be persisted: EntityCreated + StateChanged
     let resp = app
         .oneshot(
             Request::builder()
@@ -797,8 +814,14 @@ async fn should_list_events_after_entity_state_change() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body: Vec<serde_json::Value> =
         serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    // Events endpoint works, returns a valid JSON array
-    assert!(body.is_empty() || !body.is_empty());
+    assert_eq!(body.len(), 2);
+
+    let types: Vec<&str> = body
+        .iter()
+        .map(|e| e["event_type"].as_str().unwrap())
+        .collect();
+    assert!(types.contains(&"entity_created"));
+    assert!(types.contains(&"state_changed"));
 }
 
 // ---------------------------------------------------------------------------
@@ -824,11 +847,21 @@ async fn app_with_virtual() -> axum::Router {
     let automation_repo = SqliteAutomationRepository::new(pool);
 
     let event_bus = InProcessEventBus::new(256);
+    let mut event_rx = event_bus.subscribe();
 
-    let entity_service = EntityService::new(entity_repo, event_bus);
-    let device_service = DeviceService::new(device_repo);
-    let area_service = AreaService::new(area_repo);
-    let automation_service = AutomationService::new(automation_repo);
+    let entity_service = Arc::new(EntityService::new(entity_repo, event_bus));
+    let device_service = Arc::new(DeviceService::new(device_repo));
+    let area_service = Arc::new(AreaService::new(area_repo));
+    let event_store = Arc::new(event_store);
+    let automation_service = Arc::new(AutomationService::new(automation_repo));
+
+    // Wire event-bus → event-store subscriber
+    let es = Arc::clone(&event_store);
+    tokio::spawn(async move {
+        while let Ok(event) = event_rx.recv().await {
+            let _ = es.store(event).await;
+        }
+    });
 
     // Run virtual integration setup — same as minihubd main()
     let mut virtual_integration = VirtualIntegration::default();
@@ -840,7 +873,7 @@ async fn app_with_virtual() -> axum::Router {
         }
     }
 
-    let state = AppState::new(
+    let state = AppState::from_arcs(
         entity_service,
         device_service,
         area_service,
