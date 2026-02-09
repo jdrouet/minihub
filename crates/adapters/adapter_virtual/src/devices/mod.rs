@@ -13,6 +13,7 @@ pub use switch::VirtualSwitch;
 
 use minihub_domain::device::Device;
 use minihub_domain::entity::Entity;
+use minihub_domain::error::MiniHubError;
 
 /// Wrapper enum for the concrete virtual device types.
 pub enum VirtualDevice {
@@ -23,7 +24,11 @@ pub enum VirtualDevice {
 
 impl VirtualDevice {
     /// Create the [`Device`] and [`Entity`] descriptors for registration.
-    pub fn discover(&self) -> (Device, Entity) {
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error if the builder fails.
+    pub fn discover(&self) -> Result<(Device, Entity), MiniHubError> {
         match self {
             Self::Light(d) => d.discover(),
             Self::Sensor(d) => d.discover(),
@@ -32,7 +37,11 @@ impl VirtualDevice {
     }
 
     /// Handle a service call, returning the resulting entity snapshot.
-    pub fn handle_service(&self, service: &str) -> Entity {
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error if the builder fails.
+    pub fn handle_service(&self, service: &str) -> Result<Entity, MiniHubError> {
         match self {
             Self::Light(d) => d.handle_service(service),
             Self::Sensor(d) => d.handle_service(service),

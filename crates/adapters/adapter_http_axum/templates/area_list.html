@@ -1,28 +1,29 @@
-{% extends "base.html" %}
-
-{% block title %}Areas{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Areas{% endblock %} {% block content
+%}
 <h1>Areas</h1>
 
 {% if areas.is_empty() %}
 <p>No areas defined.</p>
 {% else %}
-<table>
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Parent</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for area in areas %}
-        <tr>
-            <td>{{ area.name }}</td>
-            <td>{% match area.parent_id %}{% when Some with (pid) %}{{ pid }}{% when None %}&mdash;{% endmatch %}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endif %}
-{% endblock %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Parent</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for area in areas %}
+            <tr>
+                <td>{{ area.name }}</td>
+                <td>
+                    {% match area.parent_id %}{% when Some with (pid) %}{{ pid
+                    }}{% when None %}&mdash;{% endmatch %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %} {% endblock %}

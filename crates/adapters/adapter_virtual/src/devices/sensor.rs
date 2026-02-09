@@ -3,6 +3,7 @@
 use minihub_domain::device::Device;
 use minihub_domain::entity::AttributeValue;
 use minihub_domain::entity::{Entity, EntityState};
+use minihub_domain::error::MiniHubError;
 use minihub_domain::id::{DeviceId, EntityId};
 
 /// A simulated temperature sensor.
@@ -31,15 +32,17 @@ impl VirtualSensor {
     }
 
     /// Produce the [`Device`] and [`Entity`] descriptors.
-    #[must_use]
-    pub fn discover(&self) -> (Device, Entity) {
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error if the builder fails.
+    pub fn discover(&self) -> Result<(Device, Entity), MiniHubError> {
         let device = Device::builder()
             .id(self.device_id)
             .name("Virtual Sensor")
             .manufacturer("minihub")
             .model("VSensor-1")
-            .build()
-            .unwrap();
+            .build()?;
 
         let entity = Entity::builder()
             .id(self.entity_id)
@@ -49,15 +52,18 @@ impl VirtualSensor {
             .state(EntityState::Unknown)
             .attribute("temperature", AttributeValue::Float(21.5))
             .attribute("unit", AttributeValue::String("\u{b0}C".to_string()))
-            .build()
-            .unwrap();
+            .build()?;
 
-        (device, entity)
+        Ok((device, entity))
     }
 
     /// Sensors are read-only — service calls return the current entity unchanged.
-    pub fn handle_service(&self, _service: &str) -> Entity {
-        self.discover().1
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error if the builder fails.
+    pub fn handle_service(&self, _service: &str) -> Result<Entity, MiniHubError> {
+        Ok(self.discover()?.1)
     }
 }
 
@@ -68,14 +74,14 @@ mod tests {
     #[test]
     fn should_default_to_unknown_state() {
         let sensor = VirtualSensor::default();
-        let (_, entity) = sensor.discover();
+        let (_, entity) = sensor.discover().unwrap();
         assert_eq!(entity.state, EntityState::Unknown);
     }
 
     #[test]
     fn should_have_temperature_attribute() {
         let sensor = VirtualSensor::default();
-        let (_, entity) = sensor.discover();
+        let (_, entity) = sensor.discover().unwrap();
         assert_eq!(
             entity.get_attribute("temperature"),
             Some(&AttributeValue::Float(21.5))
@@ -85,7 +91,7 @@ mod tests {
     #[test]
     fn should_have_unit_attribute() {
         let sensor = VirtualSensor::default();
-        let (_, entity) = sensor.discover();
+        let (_, entity) = sensor.discover().unwrap();
         assert_eq!(
             entity.get_attribute("unit"),
             Some(&AttributeValue::String("\u{b0}C".to_string()))
@@ -95,7 +101,7 @@ mod tests {
     #[test]
     fn should_produce_correct_device_metadata() {
         let sensor = VirtualSensor::default();
-        let (device, _) = sensor.discover();
+        let (device, _) = sensor.discover().unwrap();
         assert_eq!(device.name, "Virtual Sensor");
         assert_eq!(device.manufacturer.as_deref(), Some("minihub"));
         assert_eq!(device.model.as_deref(), Some("VSensor-1"));
@@ -104,7 +110,7 @@ mod tests {
     #[test]
     fn should_return_entity_unchanged_on_service_call() {
         let sensor = VirtualSensor::default();
-        let entity = sensor.handle_service("turn_on");
+        let entity = sensor.handle_service("turn_on").unwrap();
         assert_eq!(entity.state, EntityState::Unknown);
     }
 }

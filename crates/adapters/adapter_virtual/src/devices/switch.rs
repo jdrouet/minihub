@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 use minihub_domain::device::Device;
 use minihub_domain::entity::{Entity, EntityState};
+use minihub_domain::error::MiniHubError;
 use minihub_domain::id::{DeviceId, EntityId};
 use minihub_domain::time::now;
 
@@ -32,16 +33,18 @@ impl VirtualSwitch {
     }
 
     /// Produce the [`Device`] and [`Entity`] descriptors.
-    #[must_use]
-    pub fn discover(&self) -> (Device, Entity) {
-        let state = self.state.lock().unwrap().clone();
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error if the builder fails.
+    pub fn discover(&self) -> Result<(Device, Entity), MiniHubError> {
+        let state = self.lock_state();
         let device = Device::builder()
             .id(self.device_id)
             .name("Virtual Switch")
             .manufacturer("minihub")
             .model("VSwitch-1")
-            .build()
-            .unwrap();
+            .build()?;
 
         let entity = Entity::builder()
             .id(self.entity_id)
@@ -49,16 +52,19 @@ impl VirtualSwitch {
             .entity_id("switch.virtual_switch")
             .friendly_name("Virtual Switch")
             .state(state)
-            .build()
-            .unwrap();
+            .build()?;
 
-        (device, entity)
+        Ok((device, entity))
     }
 
     /// Handle a service call, returning the updated entity snapshot.
-    pub fn handle_service(&self, service: &str) -> Entity {
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error if the builder fails.
+    pub fn handle_service(&self, service: &str) -> Result<Entity, MiniHubError> {
         let new_state = {
-            let mut state = self.state.lock().unwrap();
+            let mut state = self.lock_state_mut();
             match service {
                 "turn_on" => *state = EntityState::On,
                 "turn_off" => *state = EntityState::Off,
@@ -73,9 +79,21 @@ impl VirtualSwitch {
             state.clone()
         };
 
-        let mut entity = self.discover().1;
+        let mut entity = self.discover()?.1;
         entity.update_state(new_state, now());
-        entity
+        Ok(entity)
+    }
+
+    fn lock_state(&self) -> EntityState {
+        self.state
+            .lock()
+            .map_or_else(|poisoned| poisoned.into_inner().clone(), |g| g.clone())
+    }
+
+    fn lock_state_mut(&self) -> std::sync::MutexGuard<'_, EntityState> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -86,51 +104,51 @@ mod tests {
     #[test]
     fn should_default_to_off() {
         let switch = VirtualSwitch::default();
-        let (_, entity) = switch.discover();
+        let (_, entity) = switch.discover().unwrap();
         assert_eq!(entity.state, EntityState::Off);
     }
 
     #[test]
     fn should_turn_on_when_service_called() {
         let switch = VirtualSwitch::default();
-        let entity = switch.handle_service("turn_on");
+        let entity = switch.handle_service("turn_on").unwrap();
         assert_eq!(entity.state, EntityState::On);
     }
 
     #[test]
     fn should_turn_off_when_service_called() {
         let switch = VirtualSwitch::default();
-        switch.handle_service("turn_on");
-        let entity = switch.handle_service("turn_off");
+        switch.handle_service("turn_on").unwrap();
+        let entity = switch.handle_service("turn_off").unwrap();
         assert_eq!(entity.state, EntityState::Off);
     }
 
     #[test]
     fn should_toggle_from_off_to_on() {
         let switch = VirtualSwitch::default();
-        let entity = switch.handle_service("toggle");
+        let entity = switch.handle_service("toggle").unwrap();
         assert_eq!(entity.state, EntityState::On);
     }
 
     #[test]
     fn should_toggle_from_on_to_off() {
         let switch = VirtualSwitch::default();
-        switch.handle_service("turn_on");
-        let entity = switch.handle_service("toggle");
+        switch.handle_service("turn_on").unwrap();
+        let entity = switch.handle_service("toggle").unwrap();
         assert_eq!(entity.state, EntityState::Off);
     }
 
     #[test]
     fn should_ignore_unknown_service() {
         let switch = VirtualSwitch::default();
-        let entity = switch.handle_service("reboot");
+        let entity = switch.handle_service("reboot").unwrap();
         assert_eq!(entity.state, EntityState::Off);
     }
 
     #[test]
     fn should_produce_correct_device_metadata() {
         let switch = VirtualSwitch::default();
-        let (device, _) = switch.discover();
+        let (device, _) = switch.discover().unwrap();
         assert_eq!(device.name, "Virtual Switch");
         assert_eq!(device.manufacturer.as_deref(), Some("minihub"));
         assert_eq!(device.model.as_deref(), Some("VSwitch-1"));

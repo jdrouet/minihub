@@ -1,19 +1,23 @@
-{% extends "base.html" %}
-
-{% block title %}Home{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Home{% endblock %} {% block content
+%}
 <h1>Dashboard</h1>
 
-<div class="card">
-    <h2>Overview</h2>
-    <table>
-        <tbody>
-            <tr><td>Entities</td><td>{{ entity_count }}</td></tr>
-            <tr><td>Entities on</td><td>{{ on_count }}</td></tr>
-            <tr><td>Devices</td><td>{{ device_count }}</td></tr>
-            <tr><td>Areas</td><td>{{ area_count }}</td></tr>
-        </tbody>
-    </table>
+<div class="stats">
+    <div class="stat-card">
+        <div class="stat-value">{{ entity_count }}</div>
+        <div class="stat-label">Entities</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ on_count }}</div>
+        <div class="stat-label">Entities On</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ device_count }}</div>
+        <div class="stat-label">Devices</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ area_count }}</div>
+        <div class="stat-label">Areas</div>
+    </div>
 </div>
 {% endblock %}

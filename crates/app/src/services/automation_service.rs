@@ -23,6 +23,7 @@ impl<R: AutomationRepository> AutomationService<R> {
     ///
     /// Returns [`MiniHubError::Validation`] if invariants fail, or a
     /// storage error propagated from the repository.
+    #[tracing::instrument(skip(self, automation), fields(automation_name = %automation.name))]
     pub async fn create_automation(
         &self,
         automation: Automation,
@@ -37,6 +38,7 @@ impl<R: AutomationRepository> AutomationService<R> {
     ///
     /// Returns [`MiniHubError::NotFound`] when no automation with `id` exists,
     /// or a storage error from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn get_automation(&self, id: AutomationId) -> Result<Automation, MiniHubError> {
         self.repo.get_by_id(id).await?.ok_or_else(|| {
             NotFoundError {
@@ -71,6 +73,7 @@ impl<R: AutomationRepository> AutomationService<R> {
     ///
     /// Returns [`MiniHubError::Validation`] if invariants fail, or a
     /// storage error from the repository.
+    #[tracing::instrument(skip(self, automation))]
     pub async fn update_automation(
         &self,
         automation: Automation,
@@ -84,6 +87,7 @@ impl<R: AutomationRepository> AutomationService<R> {
     /// # Errors
     ///
     /// Returns a storage error propagated from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn delete_automation(&self, id: AutomationId) -> Result<(), MiniHubError> {
         self.repo.delete(id).await
     }

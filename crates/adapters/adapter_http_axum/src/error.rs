@@ -27,10 +27,13 @@ impl IntoResponse for ApiError {
         let (status, message) = match &self.0 {
             MiniHubError::Validation(err) => (StatusCode::BAD_REQUEST, err.to_string()),
             MiniHubError::NotFound(err) => (StatusCode::NOT_FOUND, err.to_string()),
-            MiniHubError::Storage(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal server error".to_string(),
-            ),
+            MiniHubError::Storage(err) => {
+                tracing::error!(error = %err, "storage error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
+            }
         };
 
         (status, Json(ErrorBody { error: message })).into_response()

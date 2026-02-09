@@ -1,0 +1,19 @@
+# minihub configuration
+# Copy to minihub.toml and adjust values as needed.
+# All fields are optional — defaults are shown below.
+# Environment variables override file values:
+#   MINIHUB_HOST, MINIHUB_PORT, MINIHUB_BIND,
+#   MINIHUB_DATABASE_URL, MINIHUB_LOG, RUST_LOG
+
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[database]
+url = "sqlite:minihub.db?mode=rwc"
+
+[logging]
+filter = "minihubd=info,minihub=info,tower_http=debug"
+
+[integrations]
+virtual_enabled = true

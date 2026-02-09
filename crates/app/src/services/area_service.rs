@@ -23,6 +23,7 @@ impl<R: AreaRepository> AreaService<R> {
     ///
     /// Returns [`MiniHubError::Validation`] if invariants fail, or a
     /// storage error propagated from the repository.
+    #[tracing::instrument(skip(self, area), fields(area_name = %area.name))]
     pub async fn create_area(&self, area: Area) -> Result<Area, MiniHubError> {
         area.validate()?;
         self.repo.create(area).await
@@ -34,6 +35,7 @@ impl<R: AreaRepository> AreaService<R> {
     ///
     /// Returns [`MiniHubError::NotFound`] when no area with `id` exists,
     /// or a storage error from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn get_area(&self, id: AreaId) -> Result<Area, MiniHubError> {
         self.repo.get_by_id(id).await?.ok_or_else(|| {
             NotFoundError {
@@ -59,6 +61,7 @@ impl<R: AreaRepository> AreaService<R> {
     ///
     /// Returns [`MiniHubError::Validation`] if invariants fail, or a
     /// storage error from the repository.
+    #[tracing::instrument(skip(self, area))]
     pub async fn update_area(&self, area: Area) -> Result<Area, MiniHubError> {
         area.validate()?;
         self.repo.update(area).await
@@ -69,6 +72,7 @@ impl<R: AreaRepository> AreaService<R> {
     /// # Errors
     ///
     /// Returns a storage error propagated from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn delete_area(&self, id: AreaId) -> Result<(), MiniHubError> {
         self.repo.delete(id).await
     }
