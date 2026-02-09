@@ -20,7 +20,9 @@ use minihub_adapter_storage_sqlite_sqlx::{
     Config, SqliteAreaRepository, SqliteAutomationRepository, SqliteDeviceRepository,
     SqliteEntityRepository, SqliteEventStore,
 };
+use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
+use minihub_app::ports::Integration;
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
@@ -51,6 +53,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let device_service = DeviceService::new(device_repo);
     let area_service = AreaService::new(area_repo);
     let automation_service = AutomationService::new(automation_repo);
+
+    // Virtual integration — discover and register simulated devices
+    let mut virtual_integration = VirtualIntegration::default();
+    let discovered = virtual_integration.setup().await?;
+    for dd in discovered {
+        let _ = device_service.create_device(dd.device).await;
+        for entity in dd.entities {
+            let _ = entity_service.create_entity(entity).await;
+        }
+    }
+    eprintln!(
+        "virtual integration ready ({} integration)",
+        virtual_integration.name()
+    );
 
     // HTTP
     let state = AppState::new(
