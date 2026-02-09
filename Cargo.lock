@@ -1331,6 +1331,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "http-body-util",
+ "minihub-adapter-ble",
  "minihub-adapter-http-axum",
  "minihub-adapter-mqtt",
  "minihub-adapter-storage-sqlite-sqlx",

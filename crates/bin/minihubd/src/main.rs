@@ -17,6 +17,7 @@
 
 mod config;
 
+use minihub_adapter_ble::{BleConfig, BleIntegration};
 use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_mqtt::{MqttConfig, MqttIntegration};
 use minihub_adapter_storage_sqlite_sqlx::{
@@ -109,6 +110,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             broker = %config.integrations.mqtt.broker_host,
             port = config.integrations.mqtt.broker_port,
             "MQTT integration ready"
+        );
+    }
+
+    // BLE integration — passively scan for LYWSD03MMC sensors
+    if config.integrations.ble.enabled {
+        let ble_config = BleConfig {
+            scan_duration_secs: config.integrations.ble.scan_duration_secs,
+            update_interval_secs: config.integrations.ble.update_interval_secs,
+            device_filter: config.integrations.ble.device_filter.clone(),
+        };
+        let mut ble_integration = BleIntegration::new(ble_config);
+        let discovered = ble_integration.setup().await?;
+        for dd in discovered {
+            let _ = device_service.create_device(dd.device).await;
+            for entity in dd.entities {
+                let _ = entity_service.create_entity(entity).await;
+            }
+        }
+        tracing::info!(
+            integration = ble_integration.name(),
+            "BLE integration ready"
         );
     }
 
