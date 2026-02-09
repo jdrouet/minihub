@@ -960,10 +960,12 @@ dependencies = [
 name = "minihubd"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "minihub-adapter-http-axum",
  "minihub-adapter-storage-sqlite-sqlx",
  "minihub-app",
  "minihub-domain",
+ "tokio",
 ]
 
 [[package]]

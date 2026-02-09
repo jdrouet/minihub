@@ -12,6 +12,8 @@ minihub-app = { workspace = true }
 minihub-adapter-http-axum = { workspace = true }
 minihub-adapter-storage-sqlite-sqlx = { workspace = true }
 # minihub-adapter-mqtt = { workspace = true }  # Enable when MQTT support is added
+axum = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 
 [lints]
 workspace = true

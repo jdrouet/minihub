@@ -15,7 +15,43 @@
 //! This is the **only** crate that depends on all other crates.
 //! It is the wiring layer — no domain logic belongs here.
 
-fn main() {
-    // TODO(M2): Replace with tokio::main and actual wiring.
-    println!("minihubd: not yet implemented — see TASKS.md for the roadmap.");
+use minihub_adapter_http_axum::state::AppState;
+use minihub_adapter_storage_sqlite_sqlx::{
+    Config, SqliteAreaRepository, SqliteDeviceRepository, SqliteEntityRepository,
+};
+use minihub_app::services::area_service::AreaService;
+use minihub_app::services::device_service::DeviceService;
+use minihub_app::services::entity_service::EntityService;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Database
+    let db_config = Config {
+        database_url: std::env::var("MINIHUB_DATABASE_URL")
+            .unwrap_or_else(|_| "sqlite:minihub.db?mode=rwc".to_string()),
+    };
+    let db = db_config.build().await?;
+    let pool = db.pool().clone();
+
+    // Repositories
+    let entity_repo = SqliteEntityRepository::new(pool.clone());
+    let device_repo = SqliteDeviceRepository::new(pool.clone());
+    let area_repo = SqliteAreaRepository::new(pool);
+
+    // Services
+    let entity_service = EntityService::new(entity_repo);
+    let device_service = DeviceService::new(device_repo);
+    let area_service = AreaService::new(area_repo);
+
+    // HTTP
+    let state = AppState::new(entity_service, device_service, area_service);
+    let app = minihub_adapter_http_axum::router::build(state);
+
+    let bind_addr = std::env::var("MINIHUB_BIND").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
+    eprintln!("minihubd listening on http://{bind_addr}");
+
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }
