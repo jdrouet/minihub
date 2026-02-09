@@ -16,10 +16,12 @@ mod area_repo;
 mod device_repo;
 mod entity_repo;
 mod error;
+mod event_store;
 mod pool;
 
 pub use area_repo::SqliteAreaRepository;
 pub use device_repo::SqliteDeviceRepository;
 pub use entity_repo::SqliteEntityRepository;
 pub use error::StorageError;
+pub use event_store::SqliteEventStore;
 pub use pool::{Config, Database};

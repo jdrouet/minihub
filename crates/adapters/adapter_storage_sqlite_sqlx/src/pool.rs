@@ -89,5 +89,6 @@ mod tests {
         assert!(names.contains(&"areas"), "missing areas table");
         assert!(names.contains(&"devices"), "missing devices table");
         assert!(names.contains(&"entities"), "missing entities table");
+        assert!(names.contains(&"events"), "missing events table");
     }
 }
