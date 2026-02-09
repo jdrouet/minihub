@@ -104,6 +104,46 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
         Ok(updated)
     }
 
+    /// Create or update an entity by its string `entity_id`.
+    ///
+    /// If an entity with the same `entity_id` already exists, its state and
+    /// attributes are updated (preserving the original UUID). Otherwise a new
+    /// entity is created. Publishes [`EventType::StateChanged`] when the state
+    /// differs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MiniHubError::Validation`] if invariants fail, or a
+    /// storage error propagated from the repository.
+    #[tracing::instrument(skip(self, entity), fields(entity_id = %entity.entity_id))]
+    pub async fn upsert_entity(&self, entity: Entity) -> Result<Entity, MiniHubError> {
+        if let Some(existing) = self.repo.find_by_entity_id(&entity.entity_id).await? {
+            let mut updated = existing;
+            let old_state = updated.state.clone();
+            updated.state.clone_from(&entity.state);
+            updated.attributes.clone_from(&entity.attributes);
+            updated.last_updated = now();
+            if old_state != entity.state {
+                updated.last_changed = now();
+            }
+            let saved = self.repo.update(updated).await?;
+            if old_state != entity.state {
+                let event = Event::new(
+                    EventType::StateChanged,
+                    Some(saved.id),
+                    serde_json::json!({
+                        "old_state": old_state,
+                        "new_state": entity.state,
+                    }),
+                );
+                let _ = self.publisher.publish(event).await;
+            }
+            Ok(saved)
+        } else {
+            self.create_entity(entity).await
+        }
+    }
+
     /// Delete an entity by id.
     ///
     /// # Errors
@@ -178,6 +218,18 @@ mod tests {
                 .filter(|ent| ent.device_id == device_id)
                 .cloned()
                 .collect();
+            async { Ok(result) }
+        }
+
+        fn find_by_entity_id(
+            &self,
+            entity_id: &str,
+        ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send {
+            let store = self.store.lock().unwrap();
+            let result = store
+                .values()
+                .find(|ent| ent.entity_id == entity_id)
+                .cloned();
             async { Ok(result) }
         }
 
@@ -364,6 +416,96 @@ mod tests {
             .collect();
         assert_eq!(created_events.len(), 1);
         assert_eq!(created_events[0].entity_id, Some(id));
+    }
+
+    #[tokio::test]
+    async fn should_upsert_create_when_entity_does_not_exist() {
+        let svc = make_service();
+        let entity = valid_entity();
+        let id = entity.id;
+
+        let result = svc.upsert_entity(entity).await.unwrap();
+        assert_eq!(result.id, id);
+
+        let fetched = svc.get_entity(id).await.unwrap();
+        assert_eq!(fetched.entity_id, "light.living_room");
+    }
+
+    #[tokio::test]
+    async fn should_upsert_update_when_entity_already_exists() {
+        let svc = make_service();
+        let entity = valid_entity();
+        let original_id = entity.id;
+        svc.create_entity(entity).await.unwrap();
+
+        // Build a new entity with the same entity_id but different state
+        let updated = Entity::builder()
+            .entity_id("light.living_room")
+            .friendly_name("Living Room Light")
+            .state(EntityState::On)
+            .attribute(
+                "brightness",
+                minihub_domain::entity::AttributeValue::Int(80),
+            )
+            .build()
+            .unwrap();
+
+        let result = svc.upsert_entity(updated).await.unwrap();
+        // Should preserve the original UUID and reflect the new state
+        assert_eq!(result.id, original_id);
+        assert_eq!(result.state, EntityState::On);
+        assert_eq!(
+            result.get_attribute("brightness"),
+            Some(&minihub_domain::entity::AttributeValue::Int(80))
+        );
+    }
+
+    #[tokio::test]
+    async fn should_publish_state_changed_on_upsert_when_state_differs() {
+        let svc = make_service();
+        let entity = valid_entity();
+        let original_id = entity.id;
+        svc.create_entity(entity).await.unwrap();
+
+        let updated = Entity::builder()
+            .entity_id("light.living_room")
+            .friendly_name("Living Room Light")
+            .state(EntityState::On)
+            .build()
+            .unwrap();
+
+        svc.upsert_entity(updated).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        let state_events: Vec<_> = events
+            .iter()
+            .filter(|evt| evt.event_type == EventType::StateChanged)
+            .collect();
+        assert_eq!(state_events.len(), 1);
+        assert_eq!(state_events[0].entity_id, Some(original_id));
+    }
+
+    #[tokio::test]
+    async fn should_not_publish_state_changed_on_upsert_when_state_same() {
+        let svc = make_service();
+        let entity = valid_entity(); // state = Off
+        svc.create_entity(entity).await.unwrap();
+
+        let updated = Entity::builder()
+            .entity_id("light.living_room")
+            .friendly_name("Living Room Light")
+            .state(EntityState::Off)
+            .build()
+            .unwrap();
+
+        svc.upsert_entity(updated).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        let state_events: Vec<_> = events
+            .iter()
+            .filter(|evt| evt.event_type == EventType::StateChanged)
+            .collect();
+        assert_eq!(state_events.len(), 0);
     }
 
     #[tokio::test]

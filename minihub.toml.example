@@ -3,7 +3,9 @@
 # All fields are optional — defaults are shown below.
 # Environment variables override file values:
 #   MINIHUB_HOST, MINIHUB_PORT, MINIHUB_BIND,
-#   MINIHUB_DATABASE_URL, MINIHUB_LOG, RUST_LOG
+#   MINIHUB_DATABASE_URL, MINIHUB_LOG, RUST_LOG,
+#   MINIHUB_MQTT_ENABLED, MINIHUB_MQTT_BROKER_HOST, MINIHUB_MQTT_BROKER_PORT,
+#   MINIHUB_BLE_ENABLED, MINIHUB_BLE_SCAN_DURATION_SECS
 
 [server]
 host = "0.0.0.0"
@@ -17,3 +19,18 @@ filter = "minihubd=info,minihub=info,tower_http=debug"
 
 [integrations]
 virtual_enabled = true
+
+[integrations.mqtt]
+enabled = false
+broker_host = "localhost"
+broker_port = 1883
+client_id = "minihub"
+base_topic = "minihub"
+keep_alive_secs = 30
+discovery_timeout_secs = 3
+
+[integrations.ble]
+enabled = false
+scan_duration_secs = 10
+update_interval_secs = 60
+device_filter = []

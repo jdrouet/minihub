@@ -28,6 +28,12 @@ pub trait EntityRepository {
         device_id: DeviceId,
     ) -> impl Future<Output = Result<Vec<Entity>, MiniHubError>> + Send;
 
+    /// Find an entity by its string identifier (e.g. `"sensor.ble_a4c1385b0edf"`).
+    fn find_by_entity_id(
+        &self,
+        entity_id: &str,
+    ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send;
+
     /// Update an existing entity.
     fn update(&self, entity: Entity) -> impl Future<Output = Result<Entity, MiniHubError>> + Send;
 

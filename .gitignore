@@ -3,3 +3,4 @@
 *.sqlite
 *.sqlite3
 lcov.info
+minihub.toml

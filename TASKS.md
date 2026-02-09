@@ -19,6 +19,7 @@
   - [M4 — Virtual Integration ✅](#m4--virtual-integration-)
   - [M5 — Polish & Harden ✅](#m5--polish--harden-)
   - [M6 — MQTT Integration (Stretch) ✅](#m6--mqtt-integration-stretch-)
+  - [M7 — Passive BLE Integration ✅](#m7--passive-ble-integration-)
 - [Task Dependencies Graph](#task-dependencies-graph)
 - [Glossary](#glossary)
 
@@ -38,7 +39,8 @@ minihub/
 │   └── adapters/
 │       ├── adapter_http_axum/              # HTTP API + SSR dashboard
 │       ├── adapter_storage_sqlite_sqlx/    # SQLite persistence
-│       └── adapter_mqtt/                   # MQTT client (future)
+│       ├── adapter_mqtt/                   # MQTT client
+│       └── adapter_ble/                    # Passive BLE scanner
 ├── crates/bin/
 │   └── minihubd/            # Composition root & binary
 └── Cargo.toml               # Workspace manifest
@@ -74,6 +76,7 @@ minihub/
 | M4 | 70% | Virtual integration tests |
 | M5 | 80% | Comprehensive testing, production-ready |
 | M6 | 80% | Maintain coverage with MQTT tests |
+| M7 | 80% | Maintain coverage with BLE tests |
 
 ---
 
@@ -3042,6 +3045,29 @@ async fn test_mqtt_service_calls() {
 
 ---
 
+### M7 — Passive BLE Integration ✅
+
+**Goal**: Add passive BLE sensor support for Xiaomi LYWSD03MMC thermometers running ATC/PVVX custom firmware. Parse BLE advertisements to expose temperature, humidity, and battery data as entities. Maintain 80% coverage.
+
+**Status**: ✅ Done
+
+**Prerequisites**: M5 complete (Integration trait)
+
+**Deliverables**: `adapter_ble` crate with btleplug-based passive scanner, PVVX and ATC1441 payload parsers, config/wiring in minihubd.
+
+#### Tasks
+
+| Task ID | Description | Effort | Dependencies | DoD | Key Files |
+|---------|-------------|--------|--------------|-----|-----------|
+| M7-T1 | ✅ ADR-010 + crate scaffold | S | None | ADR-010 documents btleplug choice. `adapter_ble` crate in workspace. `cargo check --all` passes. | `docs/DECISIONS.md`, `Cargo.toml`, `crates/adapters/adapter_ble/Cargo.toml`, `crates/adapters/adapter_ble/src/lib.rs` |
+| M7-T2 | ✅ BLE config + error types | S | M7-T1 | `BleConfig` with scan/update/filter fields and defaults. `BleError` with typed variants. Unit tests for defaults and display. | `crates/adapters/adapter_ble/src/config.rs`, `crates/adapters/adapter_ble/src/error.rs` |
+| M7-T3 | ✅ Advertisement payload parser | M | M7-T2 | `parse_pvvx` (19 bytes LE) and `parse_atc1441` (13 bytes BE) for UUID `0x181A`. `SensorReading` struct. `format_mac`/`mac_slug` helpers. Comprehensive unit tests. | `crates/adapters/adapter_ble/src/parser.rs` |
+| M7-T4 | ✅ Implement `BleIntegration` | L | M7-T3 | `BleIntegration` implements `Integration` trait. `setup()` scans via btleplug, parses advertisements, builds devices/entities. `handle_service_call()` returns entity unchanged (read-only sensor). `teardown()` aborts scan task. MAC filtering. Unit tests. | `crates/adapters/adapter_ble/src/lib.rs` |
+| M7-T5 | ✅ Wire into minihubd config + main | S | M7-T4 | `BleIntegrationConfig` in config.rs. TOML section `[integrations.ble]`. Env overrides `MINIHUB_BLE_ENABLED`, `MINIHUB_BLE_SCAN_DURATION_SECS`. Wiring block in main.rs. Config tests updated. | `crates/bin/minihubd/Cargo.toml`, `crates/bin/minihubd/src/config.rs`, `crates/bin/minihubd/src/main.rs` |
+| M7-T6 | ✅ Tests + coverage | M | M7-T5 | All quality gates pass. `cargo test --all` passes (296 tests). `cargo llvm-cov` >= 80% (86.75%). | All crate test modules |
+
+---
+
 ## Task Dependencies Graph
 
 ```
@@ -3051,7 +3077,8 @@ M0 (Scaffold)
            └─> M3 (Events & Automations)
                 └─> M4 (Virtual Integration)
                      └─> M5 (Polish)
-                          └─> M6 (MQTT) [Stretch]
+                          ├─> M6 (MQTT) [Stretch]
+                          └─> M7 (BLE)
 ```
 
 Within each milestone, tasks have dependencies noted in the DoD column.

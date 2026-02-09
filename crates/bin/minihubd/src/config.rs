@@ -54,6 +54,8 @@ pub struct IntegrationsConfig {
     pub virtual_enabled: bool,
     /// MQTT integration settings (disabled by default).
     pub mqtt: MqttIntegrationConfig,
+    /// BLE integration settings (disabled by default).
+    pub ble: BleIntegrationConfig,
 }
 
 /// MQTT integration configuration within the main config file.
@@ -74,6 +76,20 @@ pub struct MqttIntegrationConfig {
     pub keep_alive_secs: u16,
     /// How long to wait for discovery messages during setup, in seconds.
     pub discovery_timeout_secs: u16,
+}
+
+/// BLE passive scanner integration configuration.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct BleIntegrationConfig {
+    /// Whether the BLE integration is enabled.
+    pub enabled: bool,
+    /// How long to scan for advertisements during setup, in seconds.
+    pub scan_duration_secs: u16,
+    /// Interval between background re-scans, in seconds.
+    pub update_interval_secs: u16,
+    /// Optional MAC address allowlist (e.g. `["A4:C1:38:AA:BB:CC"]`).
+    pub device_filter: Vec<String>,
 }
 
 impl Config {
@@ -135,6 +151,14 @@ impl Config {
                 self.integrations.mqtt.broker_port = port;
             }
         }
+        if let Ok(val) = std::env::var("MINIHUB_BLE_ENABLED") {
+            self.integrations.ble.enabled = val == "1" || val.eq_ignore_ascii_case("true");
+        }
+        if let Ok(val) = std::env::var("MINIHUB_BLE_SCAN_DURATION_SECS") {
+            if let Ok(secs) = val.parse() {
+                self.integrations.ble.scan_duration_secs = secs;
+            }
+        }
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
@@ -187,6 +211,7 @@ impl Default for IntegrationsConfig {
         Self {
             virtual_enabled: true,
             mqtt: MqttIntegrationConfig::default(),
+            ble: BleIntegrationConfig::default(),
         }
     }
 }
@@ -201,6 +226,17 @@ impl Default for MqttIntegrationConfig {
             base_topic: "minihub".to_string(),
             keep_alive_secs: 30,
             discovery_timeout_secs: 3,
+        }
+    }
+}
+
+impl Default for BleIntegrationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            scan_duration_secs: 10,
+            update_interval_secs: 60,
+            device_filter: Vec::new(),
         }
     }
 }
@@ -233,6 +269,10 @@ mod tests {
         assert!(!config.integrations.mqtt.enabled);
         assert_eq!(config.integrations.mqtt.broker_host, "localhost");
         assert_eq!(config.integrations.mqtt.broker_port, 1883);
+        assert!(!config.integrations.ble.enabled);
+        assert_eq!(config.integrations.ble.scan_duration_secs, 10);
+        assert_eq!(config.integrations.ble.update_interval_secs, 60);
+        assert!(config.integrations.ble.device_filter.is_empty());
     }
 
     #[test]
@@ -266,6 +306,12 @@ mod tests {
             base_topic = 'home'
             keep_alive_secs = 60
             discovery_timeout_secs = 10
+
+            [integrations.ble]
+            enabled = true
+            scan_duration_secs = 5
+            update_interval_secs = 30
+            device_filter = ['A4:C1:38:AA:BB:CC']
         ";
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.server.host, "127.0.0.1");
@@ -280,6 +326,13 @@ mod tests {
         assert_eq!(config.integrations.mqtt.base_topic, "home");
         assert_eq!(config.integrations.mqtt.keep_alive_secs, 60);
         assert_eq!(config.integrations.mqtt.discovery_timeout_secs, 10);
+        assert!(config.integrations.ble.enabled);
+        assert_eq!(config.integrations.ble.scan_duration_secs, 5);
+        assert_eq!(config.integrations.ble.update_interval_secs, 30);
+        assert_eq!(
+            config.integrations.ble.device_filter,
+            vec!["A4:C1:38:AA:BB:CC"]
+        );
     }
 
     #[test]

@@ -7,6 +7,7 @@ members = [
     "crates/adapters/adapter_storage_sqlite_sqlx",
     "crates/adapters/adapter_virtual",
     "crates/adapters/adapter_mqtt",
+    "crates/adapters/adapter_ble",
     "crates/bin/minihubd",
 ]
 
@@ -25,6 +26,7 @@ minihub-adapter-http-axum = { path = "crates/adapters/adapter_http_axum" }
 minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/adapter_storage_sqlite_sqlx" }
 minihub-adapter-virtual = { path = "crates/adapters/adapter_virtual" }
 minihub-adapter-mqtt = { path = "crates/adapters/adapter_mqtt" }
+minihub-adapter-ble = { path = "crates/adapters/adapter_ble" }
 
 # External dependencies
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
@@ -41,6 +43,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower-http = { version = "0.6", features = ["trace"] }
 toml = "0.8"
+btleplug = "0.11"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

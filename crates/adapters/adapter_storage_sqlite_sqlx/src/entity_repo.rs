@@ -70,6 +70,7 @@ const INSERT: &str = r"
 const SELECT_BY_ID: &str = "SELECT * FROM entities WHERE id = ?";
 const SELECT_ALL: &str = "SELECT * FROM entities";
 const SELECT_BY_DEVICE: &str = "SELECT * FROM entities WHERE device_id = ?";
+const SELECT_BY_ENTITY_ID: &str = "SELECT * FROM entities WHERE entity_id = ?";
 
 const UPDATE: &str = r"
     UPDATE entities
@@ -159,6 +160,16 @@ impl EntityRepository for SqliteEntityRepository {
 
             Ok(rows.into_iter().map(|w| w.0).collect())
         }
+    }
+
+    async fn find_by_entity_id(&self, entity_id: &str) -> Result<Option<Entity>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ENTITY_ID)
+            .bind(entity_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
+
+        Ok(Wrapper::maybe(row))
     }
 
     fn update(&self, entity: Entity) -> impl Future<Output = Result<Entity, MiniHubError>> + Send {
@@ -312,6 +323,24 @@ mod tests {
 
         let result = repo.get_by_id(id).await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn should_find_entity_by_entity_id_string() {
+        let (repo, device_id) = setup().await;
+        let entity = test_entity(device_id);
+        repo.create(entity).await.unwrap();
+
+        let found = repo.find_by_entity_id("light.living_room").await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().entity_id, "light.living_room");
+    }
+
+    #[tokio::test]
+    async fn should_return_none_when_entity_id_string_not_found() {
+        let (repo, _device_id) = setup().await;
+        let found = repo.find_by_entity_id("sensor.nonexistent").await.unwrap();
+        assert!(found.is_none());
     }
 
     #[tokio::test]
