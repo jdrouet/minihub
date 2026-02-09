@@ -121,8 +121,8 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
             Some(existing) => {
                 let mut updated = existing;
                 let old_state = updated.state.clone();
-                updated.state = entity.state.clone();
-                updated.attributes = entity.attributes.clone();
+                updated.state.clone_from(&entity.state);
+                updated.attributes.clone_from(&entity.attributes);
                 updated.last_updated = now();
                 if old_state != entity.state {
                     updated.last_changed = now();

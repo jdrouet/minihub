@@ -17,6 +17,8 @@
 
 mod config;
 
+use std::sync::Arc;
+
 use minihub_adapter_ble::{BleConfig, BleIntegration};
 use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_mqtt::{MqttConfig, MqttIntegration};
@@ -27,10 +29,12 @@ use minihub_adapter_storage_sqlite_sqlx::{
 use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
 use minihub_app::ports::Integration;
+use minihub_app::ports::integration::DiscoveredDevice;
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
+use minihub_domain::error::MiniHubError;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Config;
@@ -65,12 +69,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Event bus
     let event_bus = InProcessEventBus::new(256);
 
-    // Services
-    let entity_service = EntityService::new(entity_repo, event_bus);
-    let device_service = DeviceService::new(device_repo);
-    let area_service = AreaService::new(area_repo);
-    let automation_service = AutomationService::new(automation_repo);
+    // Services (Arc-wrapped early so they can be shared with background tasks)
+    let entity_service = Arc::new(EntityService::new(entity_repo, event_bus));
+    let device_service = Arc::new(DeviceService::new(device_repo));
+    let area_service = Arc::new(AreaService::new(area_repo));
+    let automation_service = Arc::new(AutomationService::new(automation_repo));
+    let event_store = Arc::new(event_store);
 
+    // Integrations
+    setup_integrations(&config, &device_service, &entity_service).await?;
+
+    // HTTP
+    let state = AppState::from_arcs(
+        entity_service,
+        device_service,
+        area_service,
+        event_store,
+        automation_service,
+    );
+    let app = minihub_adapter_http_axum::router::build(state);
+
+    let bind_addr = config.bind_addr();
+    tracing::info!(addr = %bind_addr, "minihubd listening");
+
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("shutdown complete");
+    Ok(())
+}
+
+/// Set up all enabled integrations, persisting discovered devices/entities.
+async fn setup_integrations<DR, ER, EP>(
+    config: &Config,
+    device_service: &Arc<DeviceService<DR>>,
+    entity_service: &Arc<EntityService<ER, EP>>,
+) -> Result<(), MiniHubError>
+where
+    DR: minihub_app::ports::DeviceRepository + Send + Sync + 'static,
+    ER: minihub_app::ports::EntityRepository + Send + Sync + 'static,
+    EP: minihub_app::ports::EventPublisher + Send + Sync + 'static,
+{
     // Virtual integration — discover and register simulated devices
     if config.integrations.virtual_enabled {
         let mut virtual_integration = VirtualIntegration::default();
@@ -113,14 +154,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // BLE integration — passively scan for LYWSD03MMC sensors
+    // BLE integration — passively scan for BLE sensors
     if config.integrations.ble.enabled {
         let ble_config = BleConfig {
             scan_duration_secs: config.integrations.ble.scan_duration_secs,
             update_interval_secs: config.integrations.ble.update_interval_secs,
             device_filter: config.integrations.ble.device_filter.clone(),
         };
-        let mut ble_integration = BleIntegration::new(ble_config);
+
+        let (ble_tx, mut ble_rx) = tokio::sync::mpsc::channel::<DiscoveredDevice>(64);
+        let mut ble_integration = BleIntegration::new(ble_config, Some(ble_tx));
+
         let discovered = ble_integration.setup().await?;
         for dd in discovered {
             let _ = device_service.create_device(dd.device).await;
@@ -128,31 +172,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = entity_service.create_entity(entity).await;
             }
         }
+
+        // Spawn receiver task for background BLE discoveries
+        let ds = Arc::clone(device_service);
+        let es = Arc::clone(entity_service);
+        tokio::spawn(async move {
+            while let Some(dd) = ble_rx.recv().await {
+                let _ = ds.create_device(dd.device).await;
+                for entity in dd.entities {
+                    let _ = es.upsert_entity(entity).await;
+                }
+            }
+            tracing::debug!("BLE discovery channel closed");
+        });
+
         tracing::info!(
             integration = ble_integration.name(),
             "BLE integration ready"
         );
     }
 
-    // HTTP
-    let state = AppState::new(
-        entity_service,
-        device_service,
-        area_service,
-        event_store,
-        automation_service,
-    );
-    let app = minihub_adapter_http_axum::router::build(state);
-
-    let bind_addr = config.bind_addr();
-    tracing::info!(addr = %bind_addr, "minihubd listening");
-
-    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-
-    tracing::info!("shutdown complete");
     Ok(())
 }
 

@@ -67,4 +67,24 @@ where
             automation_service: Arc::new(automation_service),
         }
     }
+
+    /// Create a new application state from pre-wrapped `Arc` services.
+    ///
+    /// Use this when services need to be shared with background tasks
+    /// before constructing the HTTP state.
+    pub fn from_arcs(
+        entity_service: Arc<EntityService<ER, EP>>,
+        device_service: Arc<DeviceService<DR>>,
+        area_service: Arc<AreaService<AR>>,
+        event_store: Arc<ES>,
+        automation_service: Arc<AutomationService<AUR>>,
+    ) -> Self {
+        Self {
+            entity_service,
+            device_service,
+            area_service,
+            event_store,
+            automation_service,
+        }
+    }
 }

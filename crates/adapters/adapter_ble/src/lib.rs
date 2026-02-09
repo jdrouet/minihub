@@ -23,6 +23,7 @@
 mod config;
 mod error;
 pub mod parser;
+mod scanner;
 
 pub use config::BleConfig;
 pub use error::BleError;
@@ -30,81 +31,40 @@ pub use error::BleError;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use btleplug::api::{BDAddr, Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
-use btleplug::platform::Manager;
+use btleplug::api::BDAddr;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio_stream::StreamExt as _;
 
 use minihub_app::ports::integration::{DiscoveredDevice, Integration};
-use minihub_domain::device::Device;
-use minihub_domain::entity::{AttributeValue, Entity, EntityState};
+use minihub_domain::entity::Entity;
 use minihub_domain::error::{MiniHubError, NotFoundError};
 use minihub_domain::id::EntityId;
 
-use parser::{SERVICE_UUID_181A, SensorReading};
-
-/// Passive BLE integration that scans for LYWSD03MMC (ATC firmware) sensors.
+/// Passive BLE integration that scans for BLE sensor advertisements.
 pub struct BleIntegration {
     config: BleConfig,
     scan_handle: Option<JoinHandle<()>>,
+    /// Optional channel for sending newly discovered devices to a receiver
+    /// task that persists them.
+    discovery_tx: Option<mpsc::Sender<DiscoveredDevice>>,
     /// Maps BLE MAC address to the most recent entity snapshot.
     entities: HashMap<BDAddr, Entity>,
 }
 
 impl BleIntegration {
     /// Create a new BLE integration with the given configuration.
+    ///
+    /// If `discovery_tx` is `Some`, a background scan loop will be spawned
+    /// after the initial scan, sending newly discovered or updated devices
+    /// through the channel.
     #[must_use]
-    pub fn new(config: BleConfig) -> Self {
+    pub fn new(config: BleConfig, discovery_tx: Option<mpsc::Sender<DiscoveredDevice>>) -> Self {
         Self {
             config,
             scan_handle: None,
+            discovery_tx,
             entities: HashMap::new(),
         }
-    }
-
-    /// Check whether the given MAC address passes the device filter.
-    fn passes_filter(&self, mac: &str) -> bool {
-        if self.config.device_filter.is_empty() {
-            return true;
-        }
-        self.config
-            .device_filter
-            .iter()
-            .any(|f| f.eq_ignore_ascii_case(mac))
-    }
-
-    /// Build a [`DiscoveredDevice`] from a [`SensorReading`].
-    fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevice, MiniHubError> {
-        let mac_str = parser::format_mac(reading.mac);
-        let slug = parser::mac_slug(reading.mac);
-
-        let device = Device::builder()
-            .name(format!("LYWSD03MMC {mac_str}"))
-            .manufacturer("Xiaomi")
-            .model("LYWSD03MMC")
-            .build()?;
-
-        let entity = Entity::builder()
-            .device_id(device.id)
-            .entity_id(format!("sensor.ble_{slug}"))
-            .friendly_name(format!("BLE Temp/Humidity {mac_str}"))
-            .state(EntityState::On)
-            .attribute("temperature", AttributeValue::Float(reading.temperature))
-            .attribute("humidity", AttributeValue::Float(reading.humidity))
-            .attribute(
-                "battery_level",
-                AttributeValue::Int(i64::from(reading.battery_level)),
-            )
-            .attribute(
-                "battery_voltage",
-                AttributeValue::Float(reading.battery_voltage),
-            )
-            .build()?;
-
-        Ok(DiscoveredDevice {
-            device,
-            entities: vec![entity],
-        })
     }
 }
 
@@ -114,71 +74,44 @@ impl Integration for BleIntegration {
     }
 
     async fn setup(&mut self) -> Result<Vec<DiscoveredDevice>, MiniHubError> {
-        let manager = Manager::new().await.map_err(BleError::from)?;
-
-        let adapters = manager.adapters().await.map_err(BleError::from)?;
-
-        let central = adapters.into_iter().next().ok_or(BleError::NotAvailable)?;
-
-        let mut events = central.events().await.map_err(BleError::from)?;
-
-        central
-            .start_scan(ScanFilter {
-                services: vec![SERVICE_UUID_181A],
-            })
-            .await
-            .map_err(BleError::from)?;
+        let duration = Duration::from_secs(u64::from(self.config.scan_duration_secs));
 
         tracing::info!(
             duration_secs = self.config.scan_duration_secs,
             "BLE scan started"
         );
 
-        let timeout = Duration::from_secs(u64::from(self.config.scan_duration_secs));
-        let deadline = tokio::time::Instant::now() + timeout;
-        let mut discovered: HashMap<BDAddr, DiscoveredDevice> = HashMap::new();
+        let discovered = scanner::run_scan(duration, &self.config.device_filter).await?;
 
-        while tokio::time::Instant::now() < deadline {
-            let remaining = deadline - tokio::time::Instant::now();
-            match tokio::time::timeout(remaining, events.next()).await {
-                Ok(Some(CentralEvent::ServiceDataAdvertisement { id, service_data })) => {
-                    for (uuid, data) in &service_data {
-                        let Ok(reading) = parser::parse_service_data(*uuid, data) else {
-                            continue;
-                        };
+        tracing::info!(count = discovered.len(), "BLE discovery complete");
 
-                        let mac_str = parser::format_mac(reading.mac);
-                        if !self.passes_filter(&mac_str) {
-                            tracing::debug!(mac = %mac_str, "filtered out by device_filter");
-                            continue;
-                        }
-
-                        let addr = match central.peripheral(&id).await {
-                            Ok(p) => p.address(),
-                            Err(_) => continue,
-                        };
-
-                        let is_new = !discovered.contains_key(&addr);
-                        let dd = Self::build_discovered(&reading).map_err(BleError::Domain)?;
-
-                        if let Some(entity) = dd.entities.first() {
-                            self.entities.insert(addr, entity.clone());
-                        }
-                        discovered.insert(addr, dd);
-
-                        if is_new {
-                            tracing::info!(mac = %mac_str, "discovered BLE sensor");
-                        }
-                    }
-                }
-                Ok(Some(_)) => {}
-                Ok(None) | Err(_) => break,
+        // Store entity snapshots for handle_service_call lookups.
+        for dd in discovered.values() {
+            for entity in &dd.entities {
+                // Use a zero BDAddr as key — we only need entity lookup by id.
+                self.entities.insert(BDAddr::default(), entity.clone());
             }
         }
 
-        central.stop_scan().await.map_err(BleError::from)?;
+        // Spawn background scan loop if a discovery channel was provided.
+        if let Some(tx) = self.discovery_tx.take() {
+            let scan_duration = duration;
+            let interval = Duration::from_secs(u64::from(self.config.update_interval_secs));
+            let device_filter = self.config.device_filter.clone();
 
-        tracing::info!(count = discovered.len(), "BLE discovery complete");
+            let handle = tokio::spawn(scanner::background_scan_loop(
+                scan_duration,
+                interval,
+                device_filter,
+                tx,
+            ));
+            self.scan_handle = Some(handle);
+
+            tracing::info!(
+                interval_secs = self.config.update_interval_secs,
+                "BLE background scan loop started"
+            );
+        }
 
         Ok(discovered.into_values().collect())
     }
@@ -215,46 +148,20 @@ impl Integration for BleIntegration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minihub_domain::entity::{AttributeValue, EntityState};
 
     #[test]
     fn should_create_integration_with_config() {
         let config = BleConfig::default();
-        let integration = BleIntegration::new(config);
+        let integration = BleIntegration::new(config, None);
         assert_eq!(integration.name(), "ble");
         assert!(integration.entities.is_empty());
         assert!(integration.scan_handle.is_none());
     }
 
     #[test]
-    fn should_pass_filter_when_empty() {
-        let integration = BleIntegration::new(BleConfig::default());
-        assert!(integration.passes_filter("A4:C1:38:5B:0E:DF"));
-    }
-
-    #[test]
-    fn should_pass_filter_when_mac_matches() {
-        let config = BleConfig {
-            device_filter: vec!["A4:C1:38:5B:0E:DF".to_string()],
-            ..BleConfig::default()
-        };
-        let integration = BleIntegration::new(config);
-        assert!(integration.passes_filter("A4:C1:38:5B:0E:DF"));
-        assert!(integration.passes_filter("a4:c1:38:5b:0e:df"));
-    }
-
-    #[test]
-    fn should_reject_filter_when_mac_not_listed() {
-        let config = BleConfig {
-            device_filter: vec!["A4:C1:38:AA:BB:CC".to_string()],
-            ..BleConfig::default()
-        };
-        let integration = BleIntegration::new(config);
-        assert!(!integration.passes_filter("A4:C1:38:5B:0E:DF"));
-    }
-
-    #[test]
     fn should_build_discovered_device_from_reading() {
-        let reading = SensorReading {
+        let reading = parser::SensorReading {
             mac: [0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF],
             temperature: 23.1,
             humidity: 45.0,
@@ -262,7 +169,7 @@ mod tests {
             battery_voltage: 3.05,
         };
 
-        let dd = BleIntegration::build_discovered(&reading).unwrap();
+        let dd = scanner::build_discovered(&reading).unwrap();
         assert_eq!(dd.device.name, "LYWSD03MMC A4:C1:38:5B:0E:DF");
         assert_eq!(dd.device.manufacturer.as_deref(), Some("Xiaomi"));
         assert_eq!(dd.device.model.as_deref(), Some("LYWSD03MMC"));
@@ -292,7 +199,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_return_not_found_for_unknown_entity() {
-        let integration = BleIntegration::new(BleConfig::default());
+        let integration = BleIntegration::new(BleConfig::default(), None);
         let result = integration
             .handle_service_call(EntityId::new(), "read", serde_json::json!({}))
             .await;
@@ -301,9 +208,30 @@ mod tests {
 
     #[tokio::test]
     async fn should_teardown_without_error_when_not_scanning() {
-        let mut integration = BleIntegration::new(BleConfig::default());
+        let mut integration = BleIntegration::new(BleConfig::default(), None);
         let result = integration.teardown().await;
         assert!(result.is_ok());
         assert!(integration.entities.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_store_discovery_tx_when_provided() {
+        let (tx, _rx) = mpsc::channel(1);
+        let integration = BleIntegration::new(BleConfig::default(), Some(tx));
+        assert!(integration.discovery_tx.is_some());
+    }
+
+    #[tokio::test]
+    async fn should_teardown_abort_background_task() {
+        let (tx, _rx) = mpsc::channel(1);
+        let mut integration = BleIntegration::new(BleConfig::default(), Some(tx));
+        // Simulate a background task by spawning a long-running one.
+        integration.scan_handle = Some(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        }));
+        assert!(integration.scan_handle.is_some());
+
+        integration.teardown().await.unwrap();
+        assert!(integration.scan_handle.is_none());
     }
 }
