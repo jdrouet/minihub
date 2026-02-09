@@ -13,6 +13,7 @@ minihub is a tiny Rust-only home automation server.
 - [ADR-005: Dual MIT/Apache-2.0 license](#adr-005-dual-mitapache-20-license)
 - [ADR-006: cargo-llvm-cov for code coverage](#adr-006-cargo-llvm-cov-for-code-coverage)
 - [ADR-007: Use askama for HTML templating](#adr-007-use-askama-for-html-templating)
+- [ADR-008: Trait-based integration model with lifecycle and context injection](#adr-008-trait-based-integration-model-with-lifecycle-and-context-injection)
 
 ---
 
@@ -261,3 +262,43 @@ Use askama for compile-time-checked Jinja2-style HTML templates. Templates live 
 - Separate template files to manage alongside Rust code
 - Jinja2 syntax has a learning curve for those unfamiliar with it
 - Template errors surface as compile errors, which can be cryptic
+
+---
+
+## ADR-008: Trait-based integration model with lifecycle and context injection
+
+**Status:** Accepted
+
+**Date:** 2026-02-09
+
+### Context
+
+minihub needs a pluggable way for "integrations" (device protocol adapters such as virtual/demo devices, MQTT, Zigbee, etc.) to register devices and entities, respond to service calls, and optionally run background tasks. The design must fit within the hexagonal architecture: integrations are *driven* adapters that call *into* the application layer through port traits.
+
+### Decision
+
+Define an `Integration` trait in the `app` crate with explicit lifecycle methods (`setup`, `teardown`) and a callback-style `handle_service_call`. Integrations receive an `IntegrationContext` that exposes only the application services they need (entity/device creation, event publishing). The system manages the integration lifecycle; integrations do not hold direct references to repositories.
+
+Key design choices:
+
+- **No `dyn`**: The binary crate knows all concrete integration types at compile time, so integrations are stored in a generic `IntegrationManager<I>` rather than behind trait objects.
+- **RPITIT**: The trait uses `impl Future` return types (RPITIT), consistent with all other port traits.
+- **Context injection**: Integrations receive an `IntegrationContext` on `setup()` rather than constructor injection, because the context requires fully-wired services that are only available after the composition root assembles them.
+
+### Alternatives Considered
+
+- **Dynamic dispatch (`Box<dyn Integration>`)**: Simpler collection management but violates the project's no-`dyn` rule and adds indirection.
+- **Channel-based message passing**: Integrations communicate via channels. More decoupled but adds complexity and makes error propagation harder.
+- **Direct service injection in constructor**: Would create a circular dependency — integrations need services, but the binary constructs both.
+
+### Consequences
+
+**Positive:**
+- Clean lifecycle: setup → run → teardown
+- Integrations are testable in isolation with mock contexts
+- No dynamic dispatch — monomorphized at the binary crate level
+- Consistent with existing port trait patterns (RPITIT, no `async-trait`)
+
+**Negative:**
+- Adding a new integration type requires updating the binary crate's generic parameters
+- The `IntegrationContext` must be kept minimal to avoid coupling integrations to internal details
