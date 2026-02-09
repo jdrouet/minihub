@@ -3,9 +3,13 @@
 #[allow(clippy::missing_errors_doc)]
 pub mod areas;
 #[allow(clippy::missing_errors_doc)]
+pub mod automations;
+#[allow(clippy::missing_errors_doc)]
 pub mod devices;
 #[allow(clippy::missing_errors_doc)]
 pub mod entities;
+#[allow(clippy::missing_errors_doc)]
+pub mod events;
 
 use axum::Router;
 use axum::routing::{get, put};
@@ -28,6 +32,7 @@ where
     AUR: AutomationRepository + Send + Sync + 'static,
 {
     Router::new()
+        // Entities
         .route(
             "/entities",
             get(entities::list::<ER, DR, AR, EP, ES, AUR>)
@@ -42,6 +47,7 @@ where
             "/entities/{id}/state",
             put(entities::update_state::<ER, DR, AR, EP, ES, AUR>),
         )
+        // Devices
         .route(
             "/devices",
             get(devices::list::<ER, DR, AR, EP, ES, AUR>)
@@ -52,6 +58,7 @@ where
             get(devices::get::<ER, DR, AR, EP, ES, AUR>)
                 .delete(devices::delete::<ER, DR, AR, EP, ES, AUR>),
         )
+        // Areas
         .route(
             "/areas",
             get(areas::list::<ER, DR, AR, EP, ES, AUR>)
@@ -61,5 +68,20 @@ where
             "/areas/{id}",
             get(areas::get::<ER, DR, AR, EP, ES, AUR>)
                 .delete(areas::delete::<ER, DR, AR, EP, ES, AUR>),
+        )
+        // Events
+        .route("/events", get(events::list::<ER, DR, AR, EP, ES, AUR>))
+        .route("/events/{id}", get(events::get::<ER, DR, AR, EP, ES, AUR>))
+        // Automations
+        .route(
+            "/automations",
+            get(automations::list::<ER, DR, AR, EP, ES, AUR>)
+                .post(automations::create::<ER, DR, AR, EP, ES, AUR>),
+        )
+        .route(
+            "/automations/{id}",
+            get(automations::get::<ER, DR, AR, EP, ES, AUR>)
+                .put(automations::update::<ER, DR, AR, EP, ES, AUR>)
+                .delete(automations::delete::<ER, DR, AR, EP, ES, AUR>),
         )
 }
