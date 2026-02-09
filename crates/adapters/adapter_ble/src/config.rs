@@ -25,3 +25,45 @@ impl Default for BleConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_have_sensible_defaults() {
+        let config = BleConfig::default();
+        assert_eq!(config.scan_duration_secs, 10);
+        assert_eq!(config.update_interval_secs, 60);
+        assert!(config.device_filter.is_empty());
+    }
+
+    #[test]
+    fn should_deserialize_from_toml() {
+        let toml = r#"
+            scan_duration_secs = 20
+            update_interval_secs = 120
+            device_filter = ["A4:C1:38:AA:BB:CC", "A4:C1:38:DD:EE:FF"]
+        "#;
+        let config: BleConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.scan_duration_secs, 20);
+        assert_eq!(config.update_interval_secs, 120);
+        assert_eq!(config.device_filter.len(), 2);
+        assert_eq!(config.device_filter[0], "A4:C1:38:AA:BB:CC");
+    }
+
+    #[test]
+    fn should_use_defaults_for_missing_fields() {
+        let toml = r"scan_duration_secs = 5";
+        let config: BleConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.scan_duration_secs, 5);
+        assert_eq!(config.update_interval_secs, 60);
+        assert!(config.device_filter.is_empty());
+    }
+
+    #[test]
+    fn should_deserialize_empty_toml() {
+        let config: BleConfig = toml::from_str("").unwrap();
+        assert_eq!(config.scan_duration_secs, 10);
+    }
+}
