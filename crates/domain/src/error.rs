@@ -14,6 +14,8 @@ pub enum ValidationError {
     EmptyFriendlyName,
     #[error("name cannot be empty")]
     EmptyName,
+    #[error("at least one action is required")]
+    NoActions,
 }
 
 /// Returned when a lookup by identifier finds nothing.
