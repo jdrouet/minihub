@@ -1,7 +1,12 @@
-//! Event bus port — publish/subscribe traits for domain events.
-//!
-//! TODO(M2): Define trait `EventPublisher`:
-//!   - `async fn publish(&self, event: Event) -> Result<()>`
-//!
-//! TODO(M2): Define trait `EventSubscriber`:
-//!   - `async fn subscribe(&self, event_type: &str) -> Result<Receiver<Event>>`
+//! Event bus port — publish/subscribe for domain events.
+
+use std::future::Future;
+
+use minihub_domain::error::MiniHubError;
+use minihub_domain::event::Event;
+
+/// Publishes domain events to interested subscribers.
+pub trait EventPublisher {
+    /// Publish an event to all current subscribers.
+    fn publish(&self, event: Event) -> impl Future<Output = Result<(), MiniHubError>> + Send;
+}
