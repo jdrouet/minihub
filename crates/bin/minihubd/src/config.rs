@@ -272,4 +272,50 @@ mod tests {
         let result: Result<Config, _> = toml::from_str("invalid {{{");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn should_return_io_error_when_path_is_a_directory() {
+        // Reading a directory instead of a file triggers an IO error.
+        let result = Config::from_file(".");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ConfigError::Io(_)));
+    }
+
+    #[test]
+    fn should_return_parse_error_for_malformed_file() {
+        // Create a temp file with invalid TOML content
+        let dir = std::env::temp_dir().join("minihub_test_config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("bad.toml");
+        std::fs::write(&path, "[server\ninvalid").unwrap();
+
+        let result = Config::from_file(path.to_str().unwrap());
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ConfigError::Parse(_)));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn should_display_config_errors() {
+        let err = ConfigError::Validation("port must be non-zero".to_string());
+        assert_eq!(
+            err.to_string(),
+            "invalid configuration: port must be non-zero"
+        );
+    }
+
+    #[test]
+    fn should_debug_format_config() {
+        let config = Config::default();
+        let debug = format!("{config:?}");
+        assert!(debug.contains("Config"));
+    }
+
+    #[test]
+    fn should_use_logging_filter_default() {
+        let config = Config::default();
+        assert!(config.logging.filter.contains("info"));
+    }
 }
