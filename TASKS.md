@@ -16,7 +16,7 @@
   - [M1 — Domain Model & App Core ✅](#m1--domain-model--app-core-)
   - [M2 — HTTP API + SQLite Storage + Dashboard ✅](#m2--http-api--sqlite-storage--dashboard-)
   - [M3 — Events & Automations ✅](#m3--events--automations-)
-  - [M4 — Virtual Integration](#m4--virtual-integration)
+  - [M4 — Virtual Integration ✅](#m4--virtual-integration-)
   - [M5 — Polish & Harden](#m5--polish--harden)
   - [M6 — MQTT Integration (Stretch)](#m6--mqtt-integration-stretch)
 - [Task Dependencies Graph](#task-dependencies-graph)
@@ -1880,11 +1880,11 @@ Similar to M2-T5, create REST API endpoints for events and automations following
 
 ---
 
-### M4 — Virtual Integration
+### M4 — Virtual Integration ✅
 
 **Goal**: Build a demo integration with simulated devices to prove the integration model works. Achieve 70% coverage.
 
-**Status**: Not Started
+**Status**: ✅ Done
 
 **Prerequisites**: M3 complete
 
@@ -1894,9 +1894,9 @@ Similar to M2-T5, create REST API endpoints for events and automations following
 
 | Task ID | Description | Effort | Dependencies | DoD | Key Files |
 |---------|-------------|--------|--------------|-----|-----------|
-| M4-T1 | Design integration trait/lifecycle | M | None | `Integration` trait defining `initialize`, `start`, `stop`, `discover_devices`, `handle_service_call`. Documentation on integration lifecycle, registration process. ADR documenting design. | `crates/app/src/integration.rs`, `DECISIONS.md` |
-| M4-T2 | Implement virtual integration | M | M4-T1 | `VirtualIntegration` creates fake devices (light, sensor, switch). Devices respond to service calls (turn_on/off). Sensor generates random values periodically. Integration registers devices with EntityService. Virtual entities appear in dashboard and API. | `crates/adapters/adapter_virtual/src/lib.rs`, `crates/adapters/adapter_virtual/src/devices/light.rs`, `crates/adapters/adapter_virtual/src/devices/sensor.rs`, `crates/adapters/adapter_virtual/src/devices/switch.rs` |
-| M4-T3 | Integration tests for virtual integration | S | M4-T2 | Full lifecycle test: start integration, verify devices created, call services, verify state changes, verify events published. Coverage >= 70%. | `crates/adapters/adapter_virtual/tests/integration_test.rs` |
+| M4-T1 | ✅ Design integration trait/lifecycle | M | None | `Integration` trait defining `initialize`, `start`, `stop`, `discover_devices`, `handle_service_call`. Documentation on integration lifecycle, registration process. ADR documenting design. | `crates/app/src/integration.rs`, `DECISIONS.md` |
+| M4-T2 | ✅ Implement virtual integration | M | M4-T1 | `VirtualIntegration` creates fake devices (light, sensor, switch). Devices respond to service calls (turn_on/off). Sensor generates random values periodically. Integration registers devices with EntityService. Virtual entities appear in dashboard and API. | `crates/adapters/adapter_virtual/src/lib.rs`, `crates/adapters/adapter_virtual/src/devices/light.rs`, `crates/adapters/adapter_virtual/src/devices/sensor.rs`, `crates/adapters/adapter_virtual/src/devices/switch.rs` |
+| M4-T3 | ✅ Integration tests for virtual integration | S | M4-T2 | Full lifecycle test: start integration, verify devices created, call services, verify state changes, verify events published. Coverage >= 70%. | `crates/adapters/adapter_virtual/tests/integration_test.rs` |
 
 #### Detailed Task Breakdown
 
