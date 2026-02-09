@@ -23,7 +23,7 @@
 
 mod config;
 mod error;
-mod parser;
+pub mod parser;
 
 pub use config::BleConfig;
 pub use error::BleError;
