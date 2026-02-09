@@ -938,6 +938,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "minihub-adapter-virtual"
+version = "0.1.0"
+dependencies = [
+ "minihub-app",
+ "minihub-domain",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "minihub-app"
 version = "0.1.0"
 dependencies = [
@@ -966,6 +976,7 @@ dependencies = [
  "http-body-util",
  "minihub-adapter-http-axum",
  "minihub-adapter-storage-sqlite-sqlx",
+ "minihub-adapter-virtual",
  "minihub-app",
  "minihub-domain",
  "serde_json",

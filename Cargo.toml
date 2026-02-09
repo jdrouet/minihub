@@ -5,6 +5,7 @@ members = [
     "crates/app",
     "crates/adapters/adapter_http_axum",
     "crates/adapters/adapter_storage_sqlite_sqlx",
+    "crates/adapters/adapter_virtual",
     "crates/adapters/adapter_mqtt",
     "crates/bin/minihubd",
 ]
@@ -22,6 +23,7 @@ minihub-domain = { path = "crates/domain" }
 minihub-app = { path = "crates/app" }
 minihub-adapter-http-axum = { path = "crates/adapters/adapter_http_axum" }
 minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/adapter_storage_sqlite_sqlx" }
+minihub-adapter-virtual = { path = "crates/adapters/adapter_virtual" }
 minihub-adapter-mqtt = { path = "crates/adapters/adapter_mqtt" }
 
 # External dependencies

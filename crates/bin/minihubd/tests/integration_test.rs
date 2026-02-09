@@ -13,7 +13,9 @@ use minihub_adapter_storage_sqlite_sqlx::{
     Config, SqliteAreaRepository, SqliteAutomationRepository, SqliteDeviceRepository,
     SqliteEntityRepository, SqliteEventStore,
 };
+use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
+use minihub_app::ports::Integration;
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
@@ -791,4 +793,274 @@ async fn should_list_events_after_entity_state_change() {
         serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
     // Events endpoint works, returns a valid JSON array
     assert!(body.is_empty() || !body.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Virtual integration — full lifecycle through the stack
+// ---------------------------------------------------------------------------
+
+/// Build a fully-wired router that also runs the virtual integration setup,
+/// mirroring what `minihubd` does on startup.
+async fn app_with_virtual() -> axum::Router {
+    let db = Config {
+        database_url: "sqlite::memory:".to_string(),
+    }
+    .build()
+    .await
+    .expect("in-memory database should initialise");
+
+    let pool = db.pool().clone();
+
+    let entity_repo = SqliteEntityRepository::new(pool.clone());
+    let device_repo = SqliteDeviceRepository::new(pool.clone());
+    let area_repo = SqliteAreaRepository::new(pool.clone());
+    let event_store = SqliteEventStore::new(pool.clone());
+    let automation_repo = SqliteAutomationRepository::new(pool);
+
+    let event_bus = InProcessEventBus::new(256);
+
+    let entity_service = EntityService::new(entity_repo, event_bus);
+    let device_service = DeviceService::new(device_repo);
+    let area_service = AreaService::new(area_repo);
+    let automation_service = AutomationService::new(automation_repo);
+
+    // Run virtual integration setup — same as minihubd main()
+    let mut virtual_integration = VirtualIntegration::default();
+    let discovered = virtual_integration.setup().await.unwrap();
+    for dd in discovered {
+        let _ = device_service.create_device(dd.device).await;
+        for entity in dd.entities {
+            let _ = entity_service.create_entity(entity).await;
+        }
+    }
+
+    let state = AppState::new(
+        entity_service,
+        device_service,
+        area_service,
+        event_store,
+        automation_service,
+    );
+
+    router::build(state)
+}
+
+#[tokio::test]
+async fn should_list_virtual_entities_via_api() {
+    let app = app_with_virtual().await;
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/entities")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Vec<serde_json::Value> =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+
+    assert_eq!(body.len(), 3);
+
+    let entity_ids: Vec<&str> = body
+        .iter()
+        .map(|e| e["entity_id"].as_str().unwrap())
+        .collect();
+    assert!(entity_ids.contains(&"light.virtual_light"));
+    assert!(entity_ids.contains(&"sensor.virtual_temperature"));
+    assert!(entity_ids.contains(&"switch.virtual_switch"));
+}
+
+#[tokio::test]
+async fn should_list_virtual_devices_via_api() {
+    let app = app_with_virtual().await;
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/devices")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Vec<serde_json::Value> =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+
+    assert_eq!(body.len(), 3);
+
+    let names: Vec<&str> = body.iter().map(|d| d["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"Virtual Light"));
+    assert!(names.contains(&"Virtual Sensor"));
+    assert!(names.contains(&"Virtual Switch"));
+}
+
+#[tokio::test]
+async fn should_show_virtual_entities_on_dashboard() {
+    let app = app_with_virtual().await;
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/entities")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = String::from_utf8(
+        resp.into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+
+    assert!(html.contains("Virtual Light"));
+    assert!(html.contains("Virtual Temperature"));
+    assert!(html.contains("Virtual Switch"));
+}
+
+#[tokio::test]
+async fn should_show_virtual_devices_on_dashboard() {
+    let app = app_with_virtual().await;
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/devices")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = String::from_utf8(
+        resp.into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+
+    assert!(html.contains("Virtual Light"));
+    assert!(html.contains("Virtual Sensor"));
+    assert!(html.contains("Virtual Switch"));
+}
+
+#[tokio::test]
+async fn should_update_virtual_entity_state_via_api() {
+    let app = app_with_virtual().await;
+
+    // Get the light entity id
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/entities")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let entities: Vec<serde_json::Value> =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let light = entities
+        .iter()
+        .find(|e| e["entity_id"] == "light.virtual_light")
+        .unwrap();
+    let light_id = light["id"].as_str().unwrap();
+    assert_eq!(light["state"], "off");
+
+    // Turn on the light via state update API
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/entities/{light_id}/state"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"state":"on"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["state"], "on");
+
+    // Verify it persisted
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/entities/{light_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["state"], "on");
+}
+
+#[tokio::test]
+async fn should_get_virtual_entity_with_sensor_attributes() {
+    let app = app_with_virtual().await;
+
+    // Get all entities, find the sensor
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/entities")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let entities: Vec<serde_json::Value> =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let sensor = entities
+        .iter()
+        .find(|e| e["entity_id"] == "sensor.virtual_temperature")
+        .unwrap();
+    let sensor_id = sensor["id"].as_str().unwrap();
+
+    // Get sensor detail
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/entities/{sensor_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["entity_id"], "sensor.virtual_temperature");
+    assert_eq!(body["friendly_name"], "Virtual Temperature");
+    assert_eq!(body["attributes"]["temperature"], 21.5);
+    assert_eq!(body["attributes"]["unit"], "\u{b0}C");
 }
