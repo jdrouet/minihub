@@ -938,6 +938,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "minihub-adapter-virtual"
+version = "0.1.0"
+dependencies = [
+ "minihub-app",
+ "minihub-domain",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "minihub-app"
 version = "0.1.0"
 dependencies = [

@@ -21,7 +21,7 @@ use minihub_domain::id::EntityId;
 /// 3. [`teardown`](Self::teardown) — clean up resources
 pub trait Integration {
     /// Unique name identifying this integration (e.g. `"virtual"`).
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Called once after the composition root is fully wired.
     ///
