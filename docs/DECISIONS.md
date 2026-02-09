@@ -15,6 +15,7 @@ minihub is a tiny Rust-only home automation server.
 - [ADR-007: Use askama for HTML templating](#adr-007-use-askama-for-html-templating)
 - [ADR-008: Trait-based integration model with lifecycle and context injection](#adr-008-trait-based-integration-model-with-lifecycle-and-context-injection)
 - [ADR-009: Use rumqttc for MQTT client](#adr-009-use-rumqttc-for-mqtt-client)
+- [ADR-010: Use btleplug for passive BLE scanning](#adr-010-use-btleplug-for-passive-ble-scanning)
 
 ---
 
@@ -339,3 +340,37 @@ Use rumqttc (v0.25) as the MQTT client library. rumqttc is a pure-Rust, async-fi
 - Eventloop model requires spawning a background task to drive `eventloop.poll()`
 - MQTT v5 support is available but less battle-tested than v3.1.1
 - Client and eventloop are separate objects that must be coordinated
+
+---
+
+## ADR-010: Use btleplug for passive BLE scanning
+
+**Status:** Accepted
+
+**Date:** 2026-02-09
+
+### Context
+
+minihub needs to passively scan for BLE advertisements from Xiaomi LYWSD03MMC temperature/humidity sensors running ATC/PVVX custom firmware. The firmware broadcasts sensor data (temperature, humidity, battery) as BLE service data advertisements — no connection is required. The BLE crate must support passive scanning with access to raw service data bytes, work with the tokio async runtime, and not require `unsafe` in adapter code.
+
+### Decision
+
+Use btleplug (v0.11) as the BLE scanning library. btleplug is a cross-platform Rust BLE library with async/tokio support that exposes advertisement service data via `PeripheralProperties::service_data`.
+
+### Alternatives Considered
+
+- **bluer**: Official BlueZ Rust bindings with excellent Linux/D-Bus integration and a dedicated `monitor()` API for passive advertisement scanning. However, it is **Linux-only**, which prevents development and testing on macOS.
+- **bluest**: Cross-platform and wraps bluer on Linux, but has a smaller community and is less battle-tested than btleplug.
+
+### Consequences
+
+**Positive:**
+- Cross-platform — enables development on macOS and deployment on Linux (Raspberry Pi)
+- Tokio-native async scanning via `start_scan()` + `events()` stream
+- `service_data: HashMap<Uuid, Vec<u8>>` provides direct access to raw advertisement payloads for parsing ATC/PVVX formats
+- No `unsafe` required in adapter code (platform internals are encapsulated by the crate)
+- Most widely used and maintained Rust BLE crate
+
+**Negative:**
+- Platform-native backends (CoreBluetooth on macOS, BlueZ/D-Bus on Linux) mean behaviour can differ slightly across platforms
+- Higher-level abstraction may not expose every BlueZ-specific feature
