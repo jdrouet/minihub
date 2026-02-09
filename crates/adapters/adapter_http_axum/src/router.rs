@@ -79,6 +79,12 @@ mod tests {
         ) -> Result<Vec<Entity>, MiniHubError> {
             Ok(vec![])
         }
+        async fn find_by_entity_id(
+            &self,
+            _entity_id: &str,
+        ) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
+        }
         async fn update(&self, entity: Entity) -> Result<Entity, MiniHubError> {
             Ok(entity)
         }

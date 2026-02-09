@@ -181,6 +181,18 @@ mod tests {
             async { Ok(result) }
         }
 
+        fn find_by_entity_id(
+            &self,
+            entity_id: &str,
+        ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send {
+            let store = self.store.lock().unwrap();
+            let result = store
+                .values()
+                .find(|ent| ent.entity_id == entity_id)
+                .cloned();
+            async { Ok(result) }
+        }
+
         fn update(
             &self,
             entity: Entity,
