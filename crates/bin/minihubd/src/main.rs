@@ -27,9 +27,18 @@ use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Logging
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("minihubd=info,minihub=info,tower_http=debug")),
+        )
+        .init();
+
     // Database
     let db_config = Config {
         database_url: std::env::var("MINIHUB_DATABASE_URL")
@@ -37,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let db = db_config.build().await?;
     let pool = db.pool().clone();
+    tracing::info!("database ready");
 
     // Repositories
     let entity_repo = SqliteEntityRepository::new(pool.clone());
@@ -63,9 +73,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = entity_service.create_entity(entity).await;
         }
     }
-    eprintln!(
-        "virtual integration ready ({} integration)",
-        virtual_integration.name()
+    tracing::info!(
+        integration = virtual_integration.name(),
+        "virtual integration ready"
     );
 
     // HTTP
@@ -79,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = minihub_adapter_http_axum::router::build(state);
 
     let bind_addr = std::env::var("MINIHUB_BIND").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
-    eprintln!("minihubd listening on http://{bind_addr}");
+    tracing::info!(addr = %bind_addr, "minihubd listening");
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     axum::serve(listener, app).await?;

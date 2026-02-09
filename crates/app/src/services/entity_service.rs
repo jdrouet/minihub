@@ -26,6 +26,7 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
     ///
     /// Returns [`MiniHubError::Validation`] if invariants fail, or a
     /// storage error propagated from the repository.
+    #[tracing::instrument(skip(self, entity), fields(entity_id = %entity.entity_id))]
     pub async fn create_entity(&self, mut entity: Entity) -> Result<Entity, MiniHubError> {
         entity.validate()?;
         let ts = now();
@@ -49,6 +50,7 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
     ///
     /// Returns [`MiniHubError::NotFound`] when no entity with `id` exists,
     /// or a storage error from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn get_entity(&self, id: EntityId) -> Result<Entity, MiniHubError> {
         self.repo.get_by_id(id).await?.ok_or_else(|| {
             NotFoundError {
@@ -76,6 +78,7 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
     ///
     /// Returns [`MiniHubError::NotFound`] if the entity does not exist,
     /// or a storage error from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn update_entity_state(
         &self,
         id: EntityId,
@@ -106,6 +109,7 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
     /// # Errors
     ///
     /// Returns a storage error propagated from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn delete_entity(&self, id: EntityId) -> Result<(), MiniHubError> {
         self.repo.delete(id).await?;
 

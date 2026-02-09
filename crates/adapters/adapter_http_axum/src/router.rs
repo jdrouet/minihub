@@ -2,6 +2,7 @@
 
 use axum::Router;
 use axum::routing::get;
+use tower_http::trace::TraceLayer;
 
 use minihub_app::ports::{
     AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
@@ -13,6 +14,8 @@ use crate::state::AppState;
 /// Build the top-level axum [`Router`].
 ///
 /// Merges API routes under `/api` and dashboard routes at `/`.
+/// Includes a [`TraceLayer`] that logs each HTTP request/response at the
+/// `DEBUG` level using the `tracing` ecosystem.
 pub fn build<ER, DR, AR, EP, ES, AUR>(state: AppState<ER, DR, AR, EP, ES, AUR>) -> Router
 where
     ER: EntityRepository + Send + Sync + 'static,
@@ -26,6 +29,7 @@ where
         .route("/health", get(health_check))
         .nest("/api", crate::api::routes())
         .merge(crate::dashboard::routes())
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 

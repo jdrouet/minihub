@@ -23,6 +23,7 @@ impl<R: DeviceRepository> DeviceService<R> {
     ///
     /// Returns [`MiniHubError::Validation`] if invariants fail, or a
     /// storage error propagated from the repository.
+    #[tracing::instrument(skip(self, device), fields(device_name = %device.name))]
     pub async fn create_device(&self, device: Device) -> Result<Device, MiniHubError> {
         device.validate()?;
         self.repo.create(device).await
@@ -34,6 +35,7 @@ impl<R: DeviceRepository> DeviceService<R> {
     ///
     /// Returns [`MiniHubError::NotFound`] when no device with `id` exists,
     /// or a storage error from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn get_device(&self, id: DeviceId) -> Result<Device, MiniHubError> {
         self.repo.get_by_id(id).await?.ok_or_else(|| {
             NotFoundError {
@@ -59,6 +61,7 @@ impl<R: DeviceRepository> DeviceService<R> {
     ///
     /// Returns [`MiniHubError::Validation`] if invariants fail, or a
     /// storage error from the repository.
+    #[tracing::instrument(skip(self, device))]
     pub async fn update_device(&self, device: Device) -> Result<Device, MiniHubError> {
         device.validate()?;
         self.repo.update(device).await
@@ -69,6 +72,7 @@ impl<R: DeviceRepository> DeviceService<R> {
     /// # Errors
     ///
     /// Returns a storage error propagated from the repository.
+    #[tracing::instrument(skip(self))]
     pub async fn delete_device(&self, id: DeviceId) -> Result<(), MiniHubError> {
         self.repo.delete(id).await
     }
