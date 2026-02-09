@@ -1,6 +1,6 @@
 [package]
 name = "minihub-adapter-ble"
-description = "Passive BLE adapter — scans for Xiaomi LYWSD03MMC (ATC firmware) advertisements."
+description = "Passive BLE adapter — scans for BLE sensor advertisements and exposes them as minihub entities."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

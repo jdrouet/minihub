@@ -10,16 +10,42 @@ pub enum BleError {
     NotAvailable,
 
     /// BLE scan or adapter operation failed.
-    #[error("BLE scan error: {0}")]
-    Scan(String),
+    #[error("BLE scan error")]
+    Scan(#[from] btleplug::Error),
 
     /// Failed to parse a BLE advertisement payload.
-    #[error("failed to parse BLE payload: {0}")]
-    PayloadParse(String),
+    #[error("failed to parse BLE payload")]
+    PayloadParse(#[source] PayloadParseError),
 
     /// A domain-level error (validation, not-found, etc.).
     #[error("domain error")]
     Domain(#[source] MiniHubError),
+}
+
+/// Details about why a BLE advertisement payload could not be parsed.
+#[derive(Debug, thiserror::Error)]
+pub enum PayloadParseError {
+    /// The service UUID is not one we know how to parse.
+    #[error("unsupported service UUID {0}")]
+    UnsupportedUuid(uuid::Uuid),
+
+    /// The payload length does not match any known format for the given UUID.
+    #[error("unexpected payload length {actual} for UUID 0x181A")]
+    UnexpectedLength {
+        /// The actual length received.
+        actual: usize,
+    },
+
+    /// A known format was detected but the payload is the wrong size.
+    #[error("{format} payload must be {expected} bytes, got {actual}")]
+    WrongLength {
+        /// Format name (e.g. "PVVX", "ATC1441").
+        format: &'static str,
+        /// Expected byte count.
+        expected: usize,
+        /// Actual byte count.
+        actual: usize,
+    },
 }
 
 impl BleError {
@@ -52,14 +78,40 @@ mod tests {
 
     #[test]
     fn should_display_scan_error() {
-        let err = BleError::Scan("adapter reset".to_string());
-        assert_eq!(err.to_string(), "BLE scan error: adapter reset");
+        let err = BleError::Scan(btleplug::Error::DeviceNotFound);
+        assert_eq!(err.to_string(), "BLE scan error");
     }
 
     #[test]
     fn should_display_payload_parse_error() {
-        let err = BleError::PayloadParse("too short".to_string());
-        assert_eq!(err.to_string(), "failed to parse BLE payload: too short");
+        let err = BleError::PayloadParse(PayloadParseError::UnexpectedLength { actual: 10 });
+        assert_eq!(err.to_string(), "failed to parse BLE payload");
+    }
+
+    #[test]
+    fn should_display_unsupported_uuid_parse_error() {
+        let uuid = uuid::Uuid::from_u128(0x0000_FFFF_0000_1000_8000_0080_5F9B_34FB);
+        let err = PayloadParseError::UnsupportedUuid(uuid);
+        assert!(err.to_string().contains("unsupported service UUID"));
+    }
+
+    #[test]
+    fn should_display_unexpected_length_parse_error() {
+        let err = PayloadParseError::UnexpectedLength { actual: 10 };
+        assert_eq!(
+            err.to_string(),
+            "unexpected payload length 10 for UUID 0x181A"
+        );
+    }
+
+    #[test]
+    fn should_display_wrong_length_parse_error() {
+        let err = PayloadParseError::WrongLength {
+            format: "PVVX",
+            expected: 19,
+            actual: 10,
+        };
+        assert_eq!(err.to_string(), "PVVX payload must be 19 bytes, got 10");
     }
 
     #[test]
@@ -70,7 +122,7 @@ mod tests {
 
     #[test]
     fn should_convert_scan_error_to_storage_error() {
-        let err: MiniHubError = BleError::Scan("fail".to_string()).into();
+        let err: MiniHubError = BleError::Scan(btleplug::Error::DeviceNotFound).into();
         assert!(matches!(err, MiniHubError::Storage(_)));
     }
 

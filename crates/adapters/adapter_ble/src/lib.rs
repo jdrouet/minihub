@@ -1,21 +1,20 @@
 //! # minihub-adapter-ble
 //!
-//! Passive BLE adapter — scans for Xiaomi LYWSD03MMC thermometer/hygrometer
-//! sensors running ATC/PVVX custom firmware and exposes them as minihub
-//! devices and entities.
+//! Passive BLE adapter — scans for BLE sensor advertisements and exposes
+//! them as minihub devices and entities.
 //!
 //! ## How it works
 //!
-//! The ATC/PVVX firmware broadcasts sensor data (temperature, humidity,
-//! battery) as BLE service-data advertisements on UUID `0x181A`. This adapter
-//! passively scans for those advertisements — no BLE connection is needed.
+//! Some BLE sensors broadcast readings as service-data advertisements
+//! (no connection needed). This adapter passively scans for those
+//! advertisements and parses them into sensor entities.
 //!
-//! ## Supported formats
+//! ## Currently supported formats
 //!
 //! | Format | UUID | Payload length | Endianness |
 //! |--------|------|----------------|------------|
 //! | PVVX custom | `0x181A` | 19 bytes | Little-endian |
-//! | ATC1441 original | `0x181A` | 16 bytes | Big-endian |
+//! | ATC1441 original | `0x181A` | 13 bytes | Big-endian |
 //!
 //! ## Dependency rule
 //!
@@ -115,28 +114,20 @@ impl Integration for BleIntegration {
     }
 
     async fn setup(&mut self) -> Result<Vec<DiscoveredDevice>, MiniHubError> {
-        let manager = Manager::new()
-            .await
-            .map_err(|err| BleError::Scan(err.to_string()))?;
+        let manager = Manager::new().await.map_err(BleError::from)?;
 
-        let adapters = manager
-            .adapters()
-            .await
-            .map_err(|err| BleError::Scan(err.to_string()))?;
+        let adapters = manager.adapters().await.map_err(BleError::from)?;
 
         let central = adapters.into_iter().next().ok_or(BleError::NotAvailable)?;
 
-        let mut events = central
-            .events()
-            .await
-            .map_err(|err| BleError::Scan(err.to_string()))?;
+        let mut events = central.events().await.map_err(BleError::from)?;
 
         central
             .start_scan(ScanFilter {
                 services: vec![SERVICE_UUID_181A],
             })
             .await
-            .map_err(|err| BleError::Scan(err.to_string()))?;
+            .map_err(BleError::from)?;
 
         tracing::info!(
             duration_secs = self.config.scan_duration_secs,
@@ -185,10 +176,7 @@ impl Integration for BleIntegration {
             }
         }
 
-        central
-            .stop_scan()
-            .await
-            .map_err(|err| BleError::Scan(err.to_string()))?;
+        central.stop_scan().await.map_err(BleError::from)?;
 
         tracing::info!(count = discovered.len(), "BLE discovery complete");
 

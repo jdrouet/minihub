@@ -7,7 +7,7 @@
 //! - **PVVX custom** (19 bytes, little-endian)
 //! - **ATC1441 original** (16 bytes, big-endian)
 
-use crate::error::BleError;
+use crate::error::{BleError, PayloadParseError};
 
 /// UUID used by both PVVX and ATC1441 advertisement formats.
 pub const SERVICE_UUID_181A: uuid::Uuid =
@@ -39,17 +39,17 @@ pub struct SensorReading {
 /// payload length does not match any known format.
 pub fn parse_service_data(uuid: uuid::Uuid, data: &[u8]) -> Result<SensorReading, BleError> {
     if uuid != SERVICE_UUID_181A {
-        return Err(BleError::PayloadParse(format!(
-            "unsupported service UUID {uuid}"
+        return Err(BleError::PayloadParse(PayloadParseError::UnsupportedUuid(
+            uuid,
         )));
     }
 
     match data.len() {
         PVVX_LEN => parse_pvvx(data),
         ATC1441_LEN => parse_atc1441(data),
-        other => Err(BleError::PayloadParse(format!(
-            "unexpected payload length {other} for UUID 0x181A"
-        ))),
+        other => Err(BleError::PayloadParse(
+            PayloadParseError::UnexpectedLength { actual: other },
+        )),
     }
 }
 
@@ -72,10 +72,11 @@ pub fn parse_service_data(uuid: uuid::Uuid, data: &[u8]) -> Result<SensorReading
 /// Returns [`BleError::PayloadParse`] when the slice length is not 19.
 pub fn parse_pvvx(data: &[u8]) -> Result<SensorReading, BleError> {
     if data.len() != PVVX_LEN {
-        return Err(BleError::PayloadParse(format!(
-            "PVVX payload must be {PVVX_LEN} bytes, got {}",
-            data.len()
-        )));
+        return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
+            format: "PVVX",
+            expected: PVVX_LEN,
+            actual: data.len(),
+        }));
     }
 
     let mut mac = [0u8; 6];
@@ -111,10 +112,11 @@ pub fn parse_pvvx(data: &[u8]) -> Result<SensorReading, BleError> {
 /// Returns [`BleError::PayloadParse`] when the slice length is not 13.
 pub fn parse_atc1441(data: &[u8]) -> Result<SensorReading, BleError> {
     if data.len() != ATC1441_LEN {
-        return Err(BleError::PayloadParse(format!(
-            "ATC1441 payload must be {ATC1441_LEN} bytes, got {}",
-            data.len()
-        )));
+        return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
+            format: "ATC1441",
+            expected: ATC1441_LEN,
+            actual: data.len(),
+        }));
     }
 
     let mut mac = [0u8; 6];
@@ -203,7 +205,8 @@ mod tests {
     fn should_reject_pvvx_wrong_length() {
         let data = [0u8; 10];
         let err = parse_pvvx(&data).unwrap_err();
-        assert!(err.to_string().contains("19 bytes"));
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.to_string().contains("19 bytes"));
     }
 
     // ── ATC1441 tests ───────────────────────────────────────────────────
@@ -251,7 +254,8 @@ mod tests {
     fn should_reject_atc1441_wrong_length() {
         let data = [0u8; 10];
         let err = parse_atc1441(&data).unwrap_err();
-        assert!(err.to_string().contains("13 bytes"));
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.to_string().contains("13 bytes"));
     }
 
     // ── Dispatch tests ──────────────────────────────────────────────────
@@ -275,14 +279,16 @@ mod tests {
         let unknown = uuid::Uuid::from_u128(0x0000_FFFF_0000_1000_8000_0080_5F9B_34FB);
         let data = [0u8; 19];
         let err = parse_service_data(unknown, &data).unwrap_err();
-        assert!(err.to_string().contains("unsupported service UUID"));
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.to_string().contains("unsupported service UUID"));
     }
 
     #[test]
     fn should_reject_unknown_length_for_181a() {
         let data = [0u8; 10];
         let err = parse_service_data(SERVICE_UUID_181A, &data).unwrap_err();
-        assert!(err.to_string().contains("unexpected payload length 10"));
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.to_string().contains("unexpected payload length 10"));
     }
 
     // ── MAC formatting ──────────────────────────────────────────────────
