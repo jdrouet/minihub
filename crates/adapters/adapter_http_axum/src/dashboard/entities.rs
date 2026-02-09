@@ -7,7 +7,7 @@ use axum::extract::{Form, Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository};
+use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository, EventPublisher};
 use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::id::EntityId;
 
@@ -57,11 +57,14 @@ impl IntoResponse for UpdateStateResponse {
 }
 
 /// `GET /entities` — list all entities.
-pub async fn list<ER, DR, AR>(State(state): State<AppState<ER, DR, AR>>) -> EntityListTemplate
+pub async fn list<ER, DR, AR, EP>(
+    State(state): State<AppState<ER, DR, AR, EP>>,
+) -> EntityListTemplate
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
 {
     let entities = state
         .entity_service
@@ -76,14 +79,15 @@ where
 }
 
 /// `GET /entities/:id` — entity detail + control form.
-pub async fn detail<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn detail<ER, DR, AR, EP>(
+    State(state): State<AppState<ER, DR, AR, EP>>,
     Path(id): Path<String>,
 ) -> Result<EntityDetailTemplate, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
 {
     let entity_id = EntityId::from_str(&id).map_err(|_| {
         ApiError::from(minihub_domain::error::MiniHubError::Validation(
@@ -105,8 +109,8 @@ pub struct StateForm {
 }
 
 /// `POST /entities/:id/state` — update entity state (PRG).
-pub async fn update_state<ER, DR, AR>(
-    State(state): State<AppState<ER, DR, AR>>,
+pub async fn update_state<ER, DR, AR, EP>(
+    State(state): State<AppState<ER, DR, AR, EP>>,
     Path(id): Path<String>,
     Form(form): Form<StateForm>,
 ) -> Result<UpdateStateResponse, ApiError>
@@ -114,6 +118,7 @@ where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
 {
     let entity_id = EntityId::from_str(&id).map_err(|_| {
         ApiError::from(minihub_domain::error::MiniHubError::Validation(

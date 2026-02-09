@@ -4,7 +4,7 @@ use askama::Template;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Response};
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository};
+use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository, EventPublisher};
 use minihub_domain::area::Area;
 
 use crate::state::AppState;
@@ -24,11 +24,12 @@ impl IntoResponse for AreaListTemplate {
 }
 
 /// `GET /areas` — list all areas.
-pub async fn list<ER, DR, AR>(State(state): State<AppState<ER, DR, AR>>) -> AreaListTemplate
+pub async fn list<ER, DR, AR, EP>(State(state): State<AppState<ER, DR, AR, EP>>) -> AreaListTemplate
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
 {
     let areas = state.area_service.list_areas().await.unwrap_or_default();
 

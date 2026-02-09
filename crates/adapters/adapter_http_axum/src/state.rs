@@ -2,26 +2,26 @@
 
 use std::sync::Arc;
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository};
+use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository, EventPublisher};
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
 
 /// Application state shared across all axum handlers.
 ///
-/// Generic over the three repository types to avoid dynamic dispatch.
-/// `Clone` is implemented manually so the repository types themselves do not
+/// Generic over the repository types and event publisher to avoid dynamic dispatch.
+/// `Clone` is implemented manually so the underlying types themselves do not
 /// need to be `Clone` — only the `Arc` wrappers are cloned.
-pub struct AppState<ER, DR, AR> {
+pub struct AppState<ER, DR, AR, EP> {
     /// Entity CRUD service.
-    pub entity_service: Arc<EntityService<ER>>,
+    pub entity_service: Arc<EntityService<ER, EP>>,
     /// Device CRUD service.
     pub device_service: Arc<DeviceService<DR>>,
     /// Area CRUD service.
     pub area_service: Arc<AreaService<AR>>,
 }
 
-impl<ER, DR, AR> Clone for AppState<ER, DR, AR> {
+impl<ER, DR, AR, EP> Clone for AppState<ER, DR, AR, EP> {
     fn clone(&self) -> Self {
         Self {
             entity_service: Arc::clone(&self.entity_service),
@@ -31,15 +31,16 @@ impl<ER, DR, AR> Clone for AppState<ER, DR, AR> {
     }
 }
 
-impl<ER, DR, AR> AppState<ER, DR, AR>
+impl<ER, DR, AR, EP> AppState<ER, DR, AR, EP>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
 {
     /// Create a new application state from service instances.
     pub fn new(
-        entity_service: EntityService<ER>,
+        entity_service: EntityService<ER, EP>,
         device_service: DeviceService<DR>,
         area_service: AreaService<AR>,
     ) -> Self {

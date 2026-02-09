@@ -19,6 +19,7 @@ use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_storage_sqlite_sqlx::{
     Config, SqliteAreaRepository, SqliteDeviceRepository, SqliteEntityRepository,
 };
+use minihub_app::event_bus::InProcessEventBus;
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
@@ -38,8 +39,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let device_repo = SqliteDeviceRepository::new(pool.clone());
     let area_repo = SqliteAreaRepository::new(pool);
 
+    // Event bus
+    let event_bus = InProcessEventBus::new(256);
+
     // Services
-    let entity_service = EntityService::new(entity_repo);
+    let entity_service = EntityService::new(entity_repo, event_bus);
     let device_service = DeviceService::new(device_repo);
     let area_service = AreaService::new(area_repo);
 

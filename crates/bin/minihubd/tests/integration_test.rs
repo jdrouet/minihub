@@ -12,6 +12,7 @@ use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_storage_sqlite_sqlx::{
     Config, SqliteAreaRepository, SqliteDeviceRepository, SqliteEntityRepository,
 };
+use minihub_app::event_bus::InProcessEventBus;
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
@@ -32,8 +33,10 @@ async fn app() -> axum::Router {
     let device_repo = SqliteDeviceRepository::new(pool.clone());
     let area_repo = SqliteAreaRepository::new(pool);
 
+    let event_bus = InProcessEventBus::new(256);
+
     let state = AppState::new(
-        EntityService::new(entity_repo),
+        EntityService::new(entity_repo, event_bus),
         DeviceService::new(device_repo),
         AreaService::new(area_repo),
     );

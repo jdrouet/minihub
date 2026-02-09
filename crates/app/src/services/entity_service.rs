@@ -2,20 +2,22 @@
 
 use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::error::{MiniHubError, NotFoundError};
+use minihub_domain::event::{Event, EventType};
 use minihub_domain::id::EntityId;
 use minihub_domain::time::now;
 
-use crate::ports::EntityRepository;
+use crate::ports::{EntityRepository, EventPublisher};
 
 /// Application service for entity CRUD and state management.
-pub struct EntityService<R> {
+pub struct EntityService<R, P> {
     repo: R,
+    publisher: P,
 }
 
-impl<R: EntityRepository> EntityService<R> {
-    /// Create a new service backed by the given repository.
-    pub fn new(repo: R) -> Self {
-        Self { repo }
+impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
+    /// Create a new service backed by the given repository and event publisher.
+    pub fn new(repo: R, publisher: P) -> Self {
+        Self { repo, publisher }
     }
 
     /// Create a new entity after validating domain invariants.
@@ -29,7 +31,16 @@ impl<R: EntityRepository> EntityService<R> {
         let ts = now();
         entity.last_updated = ts;
         entity.last_changed = ts;
-        self.repo.create(entity).await
+        let created = self.repo.create(entity).await?;
+
+        let event = Event::new(
+            EventType::EntityCreated,
+            Some(created.id),
+            serde_json::json!({ "entity_id": created.entity_id }),
+        );
+        let _ = self.publisher.publish(event).await;
+
+        Ok(created)
     }
 
     /// Look up an entity by id, returning an error if not found.
@@ -59,6 +70,8 @@ impl<R: EntityRepository> EntityService<R> {
 
     /// Update the state of an existing entity.
     ///
+    /// Publishes a [`EventType::StateChanged`] event when the state differs.
+    ///
     /// # Errors
     ///
     /// Returns [`MiniHubError::NotFound`] if the entity does not exist,
@@ -69,8 +82,23 @@ impl<R: EntityRepository> EntityService<R> {
         new_state: EntityState,
     ) -> Result<Entity, MiniHubError> {
         let mut entity = self.get_entity(id).await?;
-        entity.update_state(new_state, now());
-        self.repo.update(entity).await
+        let old_state = entity.state.clone();
+        entity.update_state(new_state.clone(), now());
+        let updated = self.repo.update(entity).await?;
+
+        if old_state != new_state {
+            let event = Event::new(
+                EventType::StateChanged,
+                Some(id),
+                serde_json::json!({
+                    "old_state": old_state,
+                    "new_state": new_state,
+                }),
+            );
+            let _ = self.publisher.publish(event).await;
+        }
+
+        Ok(updated)
     }
 
     /// Delete an entity by id.
@@ -79,7 +107,12 @@ impl<R: EntityRepository> EntityService<R> {
     ///
     /// Returns a storage error propagated from the repository.
     pub async fn delete_entity(&self, id: EntityId) -> Result<(), MiniHubError> {
-        self.repo.delete(id).await
+        self.repo.delete(id).await?;
+
+        let event = Event::new(EventType::EntityRemoved, Some(id), serde_json::json!({}));
+        let _ = self.publisher.publish(event).await;
+
+        Ok(())
     }
 }
 
@@ -88,8 +121,10 @@ mod tests {
     use super::*;
     use minihub_domain::entity::EntityState;
     use minihub_domain::error::ValidationError;
+    use minihub_domain::event::Event;
     use minihub_domain::id::DeviceId;
     use std::collections::HashMap;
+    use std::future::Future;
     use std::sync::Mutex;
 
     struct InMemoryEntityRepo {
@@ -158,10 +193,27 @@ mod tests {
         }
     }
 
-    use std::future::Future;
+    struct SpyPublisher {
+        events: Mutex<Vec<Event>>,
+    }
 
-    fn make_service() -> EntityService<InMemoryEntityRepo> {
-        EntityService::new(InMemoryEntityRepo::default())
+    impl Default for SpyPublisher {
+        fn default() -> Self {
+            Self {
+                events: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl EventPublisher for SpyPublisher {
+        fn publish(&self, event: Event) -> impl Future<Output = Result<(), MiniHubError>> + Send {
+            self.events.lock().unwrap().push(event);
+            async { Ok(()) }
+        }
+    }
+
+    fn make_service() -> EntityService<InMemoryEntityRepo, SpyPublisher> {
+        EntityService::new(InMemoryEntityRepo::default(), SpyPublisher::default())
     }
 
     fn valid_entity() -> Entity {
@@ -255,5 +307,76 @@ mod tests {
 
         let result = svc.get_entity(id).await;
         assert!(matches!(result, Err(MiniHubError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn should_publish_state_changed_event_when_state_differs() {
+        let svc = make_service();
+        let entity = valid_entity();
+        let id = entity.id;
+        svc.create_entity(entity).await.unwrap();
+
+        svc.update_entity_state(id, EntityState::On).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        let state_events: Vec<_> = events
+            .iter()
+            .filter(|evt| evt.event_type == EventType::StateChanged)
+            .collect();
+        assert_eq!(state_events.len(), 1);
+        assert_eq!(state_events[0].entity_id, Some(id));
+        assert_eq!(state_events[0].data["old_state"], "off");
+        assert_eq!(state_events[0].data["new_state"], "on");
+    }
+
+    #[tokio::test]
+    async fn should_not_publish_state_changed_when_state_is_same() {
+        let svc = make_service();
+        let entity = valid_entity();
+        let id = entity.id;
+        svc.create_entity(entity).await.unwrap();
+
+        svc.update_entity_state(id, EntityState::Off).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        let state_events: Vec<_> = events
+            .iter()
+            .filter(|evt| evt.event_type == EventType::StateChanged)
+            .collect();
+        assert_eq!(state_events.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn should_publish_entity_created_event_on_create() {
+        let svc = make_service();
+        let entity = valid_entity();
+        let id = entity.id;
+        svc.create_entity(entity).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        let created_events: Vec<_> = events
+            .iter()
+            .filter(|evt| evt.event_type == EventType::EntityCreated)
+            .collect();
+        assert_eq!(created_events.len(), 1);
+        assert_eq!(created_events[0].entity_id, Some(id));
+    }
+
+    #[tokio::test]
+    async fn should_publish_entity_removed_event_on_delete() {
+        let svc = make_service();
+        let entity = valid_entity();
+        let id = entity.id;
+        svc.create_entity(entity).await.unwrap();
+
+        svc.delete_entity(id).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        let removed_events: Vec<_> = events
+            .iter()
+            .filter(|evt| evt.event_type == EventType::EntityRemoved)
+            .collect();
+        assert_eq!(removed_events.len(), 1);
+        assert_eq!(removed_events[0].entity_id, Some(id));
     }
 }

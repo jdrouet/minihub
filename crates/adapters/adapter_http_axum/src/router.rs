@@ -3,18 +3,19 @@
 use axum::Router;
 use axum::routing::get;
 
-use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository};
+use minihub_app::ports::{AreaRepository, DeviceRepository, EntityRepository, EventPublisher};
 
 use crate::state::AppState;
 
 /// Build the top-level axum [`Router`].
 ///
 /// Merges API routes under `/api` and dashboard routes at `/`.
-pub fn build<ER, DR, AR>(state: AppState<ER, DR, AR>) -> Router
+pub fn build<ER, DR, AR, EP>(state: AppState<ER, DR, AR, EP>) -> Router
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
     AR: AreaRepository + Send + Sync + 'static,
+    EP: EventPublisher + Send + Sync + 'static,
 {
     Router::new()
         .route("/health", get(health_check))
@@ -40,12 +41,14 @@ mod tests {
     use minihub_domain::device::Device;
     use minihub_domain::entity::Entity;
     use minihub_domain::error::MiniHubError;
+    use minihub_domain::event::Event;
     use minihub_domain::id::{AreaId, DeviceId, EntityId};
     use tower::ServiceExt;
 
     struct StubEntityRepo;
     struct StubDeviceRepo;
     struct StubAreaRepo;
+    struct StubPublisher;
 
     impl minihub_app::ports::EntityRepository for StubEntityRepo {
         async fn create(&self, entity: Entity) -> Result<Entity, MiniHubError> {
@@ -107,9 +110,15 @@ mod tests {
         }
     }
 
-    fn test_state() -> AppState<StubEntityRepo, StubDeviceRepo, StubAreaRepo> {
+    impl EventPublisher for StubPublisher {
+        async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {
+            Ok(())
+        }
+    }
+
+    fn test_state() -> AppState<StubEntityRepo, StubDeviceRepo, StubAreaRepo, StubPublisher> {
         AppState::new(
-            EntityService::new(StubEntityRepo),
+            EntityService::new(StubEntityRepo, StubPublisher),
             DeviceService::new(StubDeviceRepo),
             AreaService::new(StubAreaRepo),
         )
