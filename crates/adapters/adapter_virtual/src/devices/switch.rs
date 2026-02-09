@@ -44,6 +44,8 @@ impl VirtualSwitch {
             .name("Virtual Switch")
             .manufacturer("minihub")
             .model("VSwitch-1")
+            .integration("virtual")
+            .unique_id("virtual_switch")
             .build()?;
 
         let entity = Entity::builder()

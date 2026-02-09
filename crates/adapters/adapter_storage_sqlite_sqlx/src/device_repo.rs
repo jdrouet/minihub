@@ -36,22 +36,27 @@ impl<'r> FromRow<'r, SqliteRow> for Wrapper {
             .transpose()
             .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
 
+        let integration: String = row.try_get("integration")?;
+        let unique_id: String = row.try_get("unique_id")?;
+
         Ok(Self(Device {
             id,
             name,
             manufacturer,
             model,
             area_id,
+            integration,
+            unique_id,
         }))
     }
 }
 
-const INSERT: &str =
-    "INSERT INTO devices (id, name, manufacturer, model, area_id) VALUES (?, ?, ?, ?, ?)";
+const INSERT: &str = "INSERT INTO devices (id, name, manufacturer, model, area_id, integration, unique_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
 const SELECT_BY_ID: &str = "SELECT * FROM devices WHERE id = ?";
 const SELECT_ALL: &str = "SELECT * FROM devices";
-const UPDATE: &str =
-    "UPDATE devices SET name = ?, manufacturer = ?, model = ?, area_id = ? WHERE id = ?";
+const SELECT_BY_INTEGRATION_UNIQUE_ID: &str =
+    "SELECT * FROM devices WHERE integration = ? AND unique_id = ?";
+const UPDATE: &str = "UPDATE devices SET name = ?, manufacturer = ?, model = ?, area_id = ?, integration = ?, unique_id = ? WHERE id = ?";
 const DELETE_BY_ID: &str = "DELETE FROM devices WHERE id = ?";
 
 /// `SQLite`-backed device repository.
@@ -77,6 +82,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 .bind(&device.manufacturer)
                 .bind(&device.model)
                 .bind(device.area_id.map(|id| id.to_string()))
+                .bind(&device.integration)
+                .bind(&device.unique_id)
                 .execute(&pool)
                 .await
                 .map_err(StorageError::from)?;
@@ -113,6 +120,26 @@ impl DeviceRepository for SqliteDeviceRepository {
         }
     }
 
+    fn find_by_integration_unique_id(
+        &self,
+        integration: &str,
+        unique_id: &str,
+    ) -> impl Future<Output = Result<Option<Device>, MiniHubError>> + Send {
+        let pool = self.pool.clone();
+        let integration = integration.to_string();
+        let unique_id = unique_id.to_string();
+        async move {
+            let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_INTEGRATION_UNIQUE_ID)
+                .bind(&integration)
+                .bind(&unique_id)
+                .fetch_optional(&pool)
+                .await
+                .map_err(StorageError::from)?;
+
+            Ok(Wrapper::maybe(row))
+        }
+    }
+
     fn update(&self, device: Device) -> impl Future<Output = Result<Device, MiniHubError>> + Send {
         let pool = self.pool.clone();
         async move {
@@ -121,6 +148,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 .bind(&device.manufacturer)
                 .bind(&device.model)
                 .bind(device.area_id.map(|id| id.to_string()))
+                .bind(&device.integration)
+                .bind(&device.unique_id)
                 .bind(device.id.to_string())
                 .execute(&pool)
                 .await
@@ -160,7 +189,12 @@ mod tests {
     }
 
     fn test_device() -> Device {
-        Device::builder().name("Hue Bridge").build().unwrap()
+        Device::builder()
+            .name("Hue Bridge")
+            .integration("test")
+            .unique_id("hue_bridge_1")
+            .build()
+            .unwrap()
     }
 
     #[tokio::test]
@@ -187,9 +221,16 @@ mod tests {
     async fn should_list_all_devices() {
         let repo = setup().await;
         repo.create(test_device()).await.unwrap();
-        repo.create(Device::builder().name("Motion Sensor").build().unwrap())
-            .await
-            .unwrap();
+        repo.create(
+            Device::builder()
+                .name("Motion Sensor")
+                .integration("test")
+                .unique_id("motion_sensor_1")
+                .build()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         let all = repo.get_all().await.unwrap();
         assert_eq!(all.len(), 2);
@@ -231,6 +272,8 @@ mod tests {
             .name("Sensor")
             .manufacturer("Aqara")
             .model("RTCGQ11LM")
+            .integration("zigbee")
+            .unique_id("sensor_1")
             .build()
             .unwrap();
         let id = device.id;
@@ -240,5 +283,52 @@ mod tests {
         assert_eq!(fetched.manufacturer.as_deref(), Some("Aqara"));
         assert_eq!(fetched.model.as_deref(), Some("RTCGQ11LM"));
         assert!(fetched.area_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn should_find_device_by_integration_and_unique_id() {
+        let repo = setup().await;
+        let device = Device::builder()
+            .name("BLE Sensor")
+            .integration("ble")
+            .unique_id("A4:C1:38:5B:0E:DF")
+            .build()
+            .unwrap();
+        let id = device.id;
+        repo.create(device).await.unwrap();
+
+        let found = repo
+            .find_by_integration_unique_id("ble", "A4:C1:38:5B:0E:DF")
+            .await
+            .unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, id);
+    }
+
+    #[tokio::test]
+    async fn should_return_none_when_integration_unique_id_not_found() {
+        let repo = setup().await;
+        let found = repo
+            .find_by_integration_unique_id("ble", "FF:FF:FF:FF:FF:FF")
+            .await
+            .unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn should_preserve_integration_and_unique_id_through_roundtrip() {
+        let repo = setup().await;
+        let device = Device::builder()
+            .name("MQTT Device")
+            .integration("mqtt")
+            .unique_id("kitchen_hub")
+            .build()
+            .unwrap();
+        let id = device.id;
+        repo.create(device).await.unwrap();
+
+        let fetched = repo.get_by_id(id).await.unwrap().unwrap();
+        assert_eq!(fetched.integration, "mqtt");
+        assert_eq!(fetched.unique_id, "kitchen_hub");
     }
 }

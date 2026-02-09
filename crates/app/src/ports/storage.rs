@@ -55,6 +55,13 @@ pub trait DeviceRepository {
     /// Get all devices.
     fn get_all(&self) -> impl Future<Output = Result<Vec<Device>, MiniHubError>> + Send;
 
+    /// Find a device by its integration source and unique id pair.
+    fn find_by_integration_unique_id(
+        &self,
+        integration: &str,
+        unique_id: &str,
+    ) -> impl Future<Output = Result<Option<Device>, MiniHubError>> + Send;
+
     /// Update an existing device.
     fn update(&self, device: Device) -> impl Future<Output = Result<Device, MiniHubError>> + Send;
 

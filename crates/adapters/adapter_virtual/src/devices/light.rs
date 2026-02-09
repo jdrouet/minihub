@@ -45,6 +45,8 @@ impl VirtualLight {
             .name("Virtual Light")
             .manufacturer("minihub")
             .model("VLight-1")
+            .integration("virtual")
+            .unique_id("virtual_light")
             .build()?;
 
         let entity = Entity::builder()

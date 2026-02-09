@@ -13,6 +13,8 @@ pub struct Device {
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub area_id: Option<AreaId>,
+    pub integration: String,
+    pub unique_id: String,
 }
 
 impl Device {
@@ -31,6 +33,12 @@ impl Device {
         if self.name.is_empty() {
             return Err(ValidationError::EmptyName.into());
         }
+        if self.integration.is_empty() {
+            return Err(ValidationError::EmptyIntegration.into());
+        }
+        if self.unique_id.is_empty() {
+            return Err(ValidationError::EmptyUniqueId.into());
+        }
         Ok(())
     }
 }
@@ -43,6 +51,8 @@ pub struct DeviceBuilder {
     manufacturer: Option<String>,
     model: Option<String>,
     area_id: Option<AreaId>,
+    integration: Option<String>,
+    unique_id: Option<String>,
 }
 
 impl DeviceBuilder {
@@ -76,6 +86,18 @@ impl DeviceBuilder {
         self
     }
 
+    #[must_use]
+    pub fn integration(mut self, integration: impl Into<String>) -> Self {
+        self.integration = Some(integration.into());
+        self
+    }
+
+    #[must_use]
+    pub fn unique_id(mut self, unique_id: impl Into<String>) -> Self {
+        self.unique_id = Some(unique_id.into());
+        self
+    }
+
     /// Consume the builder, validate, and return a [`Device`].
     ///
     /// # Errors
@@ -88,6 +110,8 @@ impl DeviceBuilder {
             manufacturer: self.manufacturer,
             model: self.model,
             area_id: self.area_id,
+            integration: self.integration.unwrap_or_default(),
+            unique_id: self.unique_id.unwrap_or_default(),
         };
         device.validate()?;
         Ok(device)
@@ -98,10 +122,21 @@ impl DeviceBuilder {
 mod tests {
     use super::*;
 
+    fn valid_device() -> Device {
+        Device::builder()
+            .name("Hue Bridge")
+            .integration("test")
+            .unique_id("hue_bridge_1")
+            .build()
+            .unwrap()
+    }
+
     #[test]
-    fn should_build_valid_device_when_name_provided() {
-        let device = Device::builder().name("Hue Bridge").build().unwrap();
+    fn should_build_valid_device_when_required_fields_provided() {
+        let device = valid_device();
         assert_eq!(device.name, "Hue Bridge");
+        assert_eq!(device.integration, "test");
+        assert_eq!(device.unique_id, "hue_bridge_1");
         assert!(device.manufacturer.is_none());
         assert!(device.model.is_none());
         assert!(device.area_id.is_none());
@@ -109,10 +144,31 @@ mod tests {
 
     #[test]
     fn should_return_validation_error_when_name_is_empty() {
-        let result = Device::builder().build();
+        let result = Device::builder()
+            .integration("test")
+            .unique_id("id")
+            .build();
         assert!(matches!(
             result,
             Err(MiniHubError::Validation(ValidationError::EmptyName))
+        ));
+    }
+
+    #[test]
+    fn should_return_validation_error_when_integration_is_empty() {
+        let result = Device::builder().name("Dev").unique_id("id").build();
+        assert!(matches!(
+            result,
+            Err(MiniHubError::Validation(ValidationError::EmptyIntegration))
+        ));
+    }
+
+    #[test]
+    fn should_return_validation_error_when_unique_id_is_empty() {
+        let result = Device::builder().name("Dev").integration("test").build();
+        assert!(matches!(
+            result,
+            Err(MiniHubError::Validation(ValidationError::EmptyUniqueId))
         ));
     }
 
@@ -123,6 +179,8 @@ mod tests {
             .name("Motion Sensor")
             .manufacturer("Aqara")
             .model("RTCGQ11LM")
+            .integration("zigbee")
+            .unique_id("0x00158d0001a2b3c4")
             .area_id(area)
             .build()
             .unwrap();
@@ -134,10 +192,12 @@ mod tests {
 
     #[test]
     fn should_roundtrip_through_serde_json() {
-        let device = Device::builder().name("Lamp").build().unwrap();
+        let device = valid_device();
         let json = serde_json::to_string(&device).unwrap();
         let parsed: Device = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.id, device.id);
         assert_eq!(parsed.name, device.name);
+        assert_eq!(parsed.integration, device.integration);
+        assert_eq!(parsed.unique_id, device.unique_id);
     }
 }

@@ -42,6 +42,8 @@ impl VirtualSensor {
             .name("Virtual Sensor")
             .manufacturer("minihub")
             .model("VSensor-1")
+            .integration("virtual")
+            .unique_id("virtual_sensor")
             .build()?;
 
         let entity = Entity::builder()

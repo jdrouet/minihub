@@ -28,6 +28,8 @@ pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevi
         .name(format!("LYWSD03MMC {mac_str}"))
         .manufacturer("Xiaomi")
         .model("LYWSD03MMC")
+        .integration("ble")
+        .unique_id(&mac_str)
         .build()?;
 
     let entity = Entity::builder()

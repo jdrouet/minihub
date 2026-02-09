@@ -180,18 +180,20 @@ impl MqttIntegration {
         let payload: DiscoveryPayload =
             serde_json::from_slice(&publish.payload).map_err(MqttError::PayloadParse)?;
 
-        let device = Device::builder()
-            .name(&payload.device.name)
-            .manufacturer(&payload.device.manufacturer)
-            .model(&payload.device.model)
-            .build()
-            .map_err(MqttError::Domain)?;
-
         let base = &self.config.base_topic;
         let device_slug = topic
             .strip_prefix(&format!("{base}/"))
             .and_then(|rest| rest.strip_suffix("/config"))
             .unwrap_or("unknown");
+
+        let device = Device::builder()
+            .name(&payload.device.name)
+            .manufacturer(&payload.device.manufacturer)
+            .model(&payload.device.model)
+            .integration("mqtt")
+            .unique_id(device_slug)
+            .build()
+            .map_err(MqttError::Domain)?;
 
         let mut entities = Vec::new();
         for ep in &payload.entities {

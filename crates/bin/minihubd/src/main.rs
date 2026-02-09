@@ -117,9 +117,9 @@ where
         let mut virtual_integration = VirtualIntegration::default();
         let discovered = virtual_integration.setup().await?;
         for dd in discovered {
-            let _ = device_service.create_device(dd.device).await;
+            let _ = device_service.upsert_device(dd.device).await;
             for entity in dd.entities {
-                let _ = entity_service.create_entity(entity).await;
+                let _ = entity_service.upsert_entity(entity).await;
             }
         }
         tracing::info!(
@@ -141,9 +141,9 @@ where
         let mut mqtt_integration = MqttIntegration::new(mqtt_config);
         let discovered = mqtt_integration.setup().await?;
         for dd in discovered {
-            let _ = device_service.create_device(dd.device).await;
+            let _ = device_service.upsert_device(dd.device).await;
             for entity in dd.entities {
-                let _ = entity_service.create_entity(entity).await;
+                let _ = entity_service.upsert_entity(entity).await;
             }
         }
         tracing::info!(
@@ -167,9 +167,9 @@ where
 
         let discovered = ble_integration.setup().await?;
         for dd in discovered {
-            let _ = device_service.create_device(dd.device).await;
+            let _ = device_service.upsert_device(dd.device).await;
             for entity in dd.entities {
-                let _ = entity_service.create_entity(entity).await;
+                let _ = entity_service.upsert_entity(entity).await;
             }
         }
 
@@ -178,7 +178,7 @@ where
         let es = Arc::clone(entity_service);
         tokio::spawn(async move {
             while let Some(dd) = ble_rx.recv().await {
-                let _ = ds.create_device(dd.device).await;
+                let _ = ds.upsert_device(dd.device).await;
                 for entity in dd.entities {
                     let _ = es.upsert_entity(entity).await;
                 }

@@ -67,6 +67,37 @@ impl<R: DeviceRepository> DeviceService<R> {
         self.repo.update(device).await
     }
 
+    /// Create or update a device by its `(integration, unique_id)` pair.
+    ///
+    /// If a device with the same integration and unique id already exists, its
+    /// name, manufacturer, model, and area are updated (preserving the original
+    /// UUID). Otherwise a new device is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MiniHubError::Validation`] if invariants fail, or a
+    /// storage error propagated from the repository.
+    #[tracing::instrument(skip(self, device), fields(device_name = %device.name))]
+    pub async fn upsert_device(&self, device: Device) -> Result<Device, MiniHubError> {
+        if let Some(existing) = self
+            .repo
+            .find_by_integration_unique_id(&device.integration, &device.unique_id)
+            .await?
+        {
+            let updated = Device {
+                id: existing.id,
+                name: device.name,
+                manufacturer: device.manufacturer,
+                model: device.model,
+                area_id: existing.area_id,
+                integration: device.integration,
+                unique_id: device.unique_id,
+            };
+            return self.update_device(updated).await;
+        }
+        self.create_device(device).await
+    }
+
     /// Delete a device by id.
     ///
     /// # Errors
@@ -123,6 +154,19 @@ mod tests {
             async { Ok(result) }
         }
 
+        fn find_by_integration_unique_id(
+            &self,
+            integration: &str,
+            unique_id: &str,
+        ) -> impl Future<Output = Result<Option<Device>, MiniHubError>> + Send {
+            let store = self.store.lock().unwrap();
+            let result = store
+                .values()
+                .find(|d| d.integration == integration && d.unique_id == unique_id)
+                .cloned();
+            async { Ok(result) }
+        }
+
         fn update(
             &self,
             device: Device,
@@ -144,7 +188,12 @@ mod tests {
     }
 
     fn valid_device() -> Device {
-        Device::builder().name("Hue Bridge").build().unwrap()
+        Device::builder()
+            .name("Hue Bridge")
+            .integration("test")
+            .unique_id("hue_bridge_1")
+            .build()
+            .unwrap()
     }
 
     #[tokio::test]
@@ -184,9 +233,16 @@ mod tests {
     async fn should_list_all_devices() {
         let svc = make_service();
         svc.create_device(valid_device()).await.unwrap();
-        svc.create_device(Device::builder().name("Sensor Hub").build().unwrap())
-            .await
-            .unwrap();
+        svc.create_device(
+            Device::builder()
+                .name("Sensor Hub")
+                .integration("test")
+                .unique_id("sensor_hub_1")
+                .build()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         let all = svc.list_devices().await.unwrap();
         assert_eq!(all.len(), 2);
@@ -216,5 +272,82 @@ mod tests {
 
         let result = svc.get_device(id).await;
         assert!(matches!(result, Err(MiniHubError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn should_upsert_create_when_device_does_not_exist() {
+        let svc = make_service();
+        let device = Device::builder()
+            .name("BLE Sensor")
+            .integration("ble")
+            .unique_id("A4:C1:38:5B:0E:DF")
+            .build()
+            .unwrap();
+        let id = device.id;
+
+        let result = svc.upsert_device(device).await.unwrap();
+        assert_eq!(result.id, id);
+
+        let fetched = svc.get_device(id).await.unwrap();
+        assert_eq!(fetched.name, "BLE Sensor");
+        assert_eq!(fetched.integration, "ble");
+        assert_eq!(fetched.unique_id, "A4:C1:38:5B:0E:DF");
+    }
+
+    #[tokio::test]
+    async fn should_upsert_update_when_device_already_exists() {
+        let svc = make_service();
+        let device = Device::builder()
+            .name("BLE Sensor")
+            .integration("ble")
+            .unique_id("A4:C1:38:5B:0E:DF")
+            .build()
+            .unwrap();
+        let original_id = device.id;
+        svc.create_device(device).await.unwrap();
+
+        // Build a new device with the same integration+unique_id but different name
+        let updated = Device::builder()
+            .name("BLE Sensor v2")
+            .manufacturer("Xiaomi")
+            .integration("ble")
+            .unique_id("A4:C1:38:5B:0E:DF")
+            .build()
+            .unwrap();
+
+        let result = svc.upsert_device(updated).await.unwrap();
+        // Should preserve the original UUID
+        assert_eq!(result.id, original_id);
+        assert_eq!(result.name, "BLE Sensor v2");
+        assert_eq!(result.manufacturer.as_deref(), Some("Xiaomi"));
+    }
+
+    #[tokio::test]
+    async fn should_upsert_not_match_different_integration() {
+        let svc = make_service();
+        let device = Device::builder()
+            .name("Sensor")
+            .integration("ble")
+            .unique_id("ABC")
+            .build()
+            .unwrap();
+        let first_id = device.id;
+        svc.create_device(device).await.unwrap();
+
+        let device2 = Device::builder()
+            .name("Sensor")
+            .integration("mqtt")
+            .unique_id("ABC")
+            .build()
+            .unwrap();
+        let second_id = device2.id;
+
+        let result = svc.upsert_device(device2).await.unwrap();
+        // Different integration → should create new, not update
+        assert_eq!(result.id, second_id);
+        assert_ne!(result.id, first_id);
+
+        let all = svc.list_devices().await.unwrap();
+        assert_eq!(all.len(), 2);
     }
 }

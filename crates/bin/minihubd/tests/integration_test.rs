@@ -244,7 +244,7 @@ async fn should_complete_device_crud_cycle() {
                 .uri("/api/devices")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    r#"{"name":"Test Light","manufacturer":"Acme","model":"X100"}"#,
+                    r#"{"name":"Test Light","manufacturer":"Acme","model":"X100","integration":"test","unique_id":"test_light_1"}"#,
                 ))
                 .unwrap(),
         )
@@ -332,7 +332,9 @@ async fn should_complete_entity_crud_cycle() {
                 .method("POST")
                 .uri("/api/devices")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"name":"Sensor Hub"}"#))
+                .body(Body::from(
+                    r#"{"name":"Sensor Hub","integration":"test","unique_id":"sensor_hub_1"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -518,7 +520,9 @@ async fn should_show_entity_on_dashboard_after_api_creation() {
                 .method("POST")
                 .uri("/api/devices")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"name":"Hub"}"#))
+                .body(Body::from(
+                    r#"{"name":"Hub","integration":"test","unique_id":"hub_1"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -731,7 +735,9 @@ async fn should_list_events_after_entity_state_change() {
                 .method("POST")
                 .uri("/api/devices")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"name":"Hub"}"#))
+                .body(Body::from(
+                    r#"{"name":"Hub","integration":"test","unique_id":"hub_1"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -828,9 +834,9 @@ async fn app_with_virtual() -> axum::Router {
     let mut virtual_integration = VirtualIntegration::default();
     let discovered = virtual_integration.setup().await.unwrap();
     for dd in discovered {
-        let _ = device_service.create_device(dd.device).await;
+        let _ = device_service.upsert_device(dd.device).await;
         for entity in dd.entities {
-            let _ = entity_service.create_entity(entity).await;
+            let _ = entity_service.upsert_entity(entity).await;
         }
     }
 

@@ -14,6 +14,10 @@ pub enum ValidationError {
     EmptyFriendlyName,
     #[error("name cannot be empty")]
     EmptyName,
+    #[error("integration cannot be empty")]
+    EmptyIntegration,
+    #[error("unique_id cannot be empty")]
+    EmptyUniqueId,
     #[error("at least one action is required")]
     NoActions,
 }

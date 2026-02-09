@@ -103,6 +103,13 @@ mod tests {
         async fn get_all(&self) -> Result<Vec<Device>, MiniHubError> {
             Ok(vec![])
         }
+        async fn find_by_integration_unique_id(
+            &self,
+            _integration: &str,
+            _unique_id: &str,
+        ) -> Result<Option<Device>, MiniHubError> {
+            Ok(None)
+        }
         async fn update(&self, device: Device) -> Result<Device, MiniHubError> {
             Ok(device)
         }

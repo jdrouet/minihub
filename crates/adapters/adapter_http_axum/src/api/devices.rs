@@ -26,6 +26,8 @@ pub struct CreateDeviceRequest {
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub area_id: Option<String>,
+    pub integration: String,
+    pub unique_id: String,
 }
 
 /// Possible responses from the list endpoint.
@@ -151,6 +153,9 @@ where
     if let Some(area_id) = area_id {
         builder = builder.area_id(area_id);
     }
+    builder = builder
+        .integration(req.integration)
+        .unique_id(req.unique_id);
 
     let device = builder.build()?;
     let created = state.device_service.create_device(device).await?;
