@@ -18,6 +18,7 @@
 mod config;
 
 use minihub_adapter_http_axum::state::AppState;
+use minihub_adapter_mqtt::{MqttConfig, MqttIntegration};
 use minihub_adapter_storage_sqlite_sqlx::{
     Config as DbConfig, SqliteAreaRepository, SqliteAutomationRepository, SqliteDeviceRepository,
     SqliteEntityRepository, SqliteEventStore,
@@ -82,6 +83,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(
             integration = virtual_integration.name(),
             "virtual integration ready"
+        );
+    }
+
+    // MQTT integration — connect to broker and discover devices
+    if config.integrations.mqtt.enabled {
+        let mqtt_config = MqttConfig {
+            broker_host: config.integrations.mqtt.broker_host.clone(),
+            broker_port: config.integrations.mqtt.broker_port,
+            client_id: config.integrations.mqtt.client_id.clone(),
+            base_topic: config.integrations.mqtt.base_topic.clone(),
+            keep_alive_secs: config.integrations.mqtt.keep_alive_secs,
+            discovery_timeout_secs: config.integrations.mqtt.discovery_timeout_secs,
+        };
+        let mut mqtt_integration = MqttIntegration::new(mqtt_config);
+        let discovered = mqtt_integration.setup().await?;
+        for dd in discovered {
+            let _ = device_service.create_device(dd.device).await;
+            for entity in dd.entities {
+                let _ = entity_service.create_entity(entity).await;
+            }
+        }
+        tracing::info!(
+            integration = mqtt_integration.name(),
+            broker = %config.integrations.mqtt.broker_host,
+            port = config.integrations.mqtt.broker_port,
+            "MQTT integration ready"
         );
     }
 

@@ -12,7 +12,7 @@ minihub-app = { workspace = true }
 minihub-adapter-http-axum = { workspace = true }
 minihub-adapter-storage-sqlite-sqlx = { workspace = true }
 minihub-adapter-virtual = { workspace = true }
-# minihub-adapter-mqtt = { workspace = true }  # Enable when MQTT support is added
+minihub-adapter-mqtt = { workspace = true }
 axum = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

@@ -52,6 +52,28 @@ pub struct LoggingConfig {
 pub struct IntegrationsConfig {
     /// Enable the virtual/demo integration.
     pub virtual_enabled: bool,
+    /// MQTT integration settings (disabled by default).
+    pub mqtt: MqttIntegrationConfig,
+}
+
+/// MQTT integration configuration within the main config file.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct MqttIntegrationConfig {
+    /// Whether the MQTT integration is enabled.
+    pub enabled: bool,
+    /// MQTT broker hostname or IP address.
+    pub broker_host: String,
+    /// MQTT broker port.
+    pub broker_port: u16,
+    /// MQTT client identifier.
+    pub client_id: String,
+    /// Base topic prefix for all minihub MQTT communication.
+    pub base_topic: String,
+    /// Keep-alive interval in seconds.
+    pub keep_alive_secs: u16,
+    /// How long to wait for discovery messages during setup, in seconds.
+    pub discovery_timeout_secs: u16,
 }
 
 impl Config {
@@ -101,6 +123,17 @@ impl Config {
         }
         if let Ok(val) = std::env::var("RUST_LOG") {
             self.logging.filter = val;
+        }
+        if let Ok(val) = std::env::var("MINIHUB_MQTT_ENABLED") {
+            self.integrations.mqtt.enabled = val == "1" || val.eq_ignore_ascii_case("true");
+        }
+        if let Ok(val) = std::env::var("MINIHUB_MQTT_BROKER_HOST") {
+            self.integrations.mqtt.broker_host = val;
+        }
+        if let Ok(val) = std::env::var("MINIHUB_MQTT_BROKER_PORT") {
+            if let Ok(port) = val.parse() {
+                self.integrations.mqtt.broker_port = port;
+            }
         }
     }
 
@@ -153,6 +186,21 @@ impl Default for IntegrationsConfig {
     fn default() -> Self {
         Self {
             virtual_enabled: true,
+            mqtt: MqttIntegrationConfig::default(),
+        }
+    }
+}
+
+impl Default for MqttIntegrationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            broker_host: "localhost".to_string(),
+            broker_port: 1883,
+            client_id: "minihub".to_string(),
+            base_topic: "minihub".to_string(),
+            keep_alive_secs: 30,
+            discovery_timeout_secs: 3,
         }
     }
 }
@@ -182,6 +230,9 @@ mod tests {
         assert_eq!(config.server.port, 3000);
         assert_eq!(config.database.url, "sqlite:minihub.db?mode=rwc");
         assert!(config.integrations.virtual_enabled);
+        assert!(!config.integrations.mqtt.enabled);
+        assert_eq!(config.integrations.mqtt.broker_host, "localhost");
+        assert_eq!(config.integrations.mqtt.broker_port, 1883);
     }
 
     #[test]
@@ -206,6 +257,15 @@ mod tests {
 
             [integrations]
             virtual_enabled = false
+
+            [integrations.mqtt]
+            enabled = true
+            broker_host = 'mqtt.local'
+            broker_port = 8883
+            client_id = 'my-hub'
+            base_topic = 'home'
+            keep_alive_secs = 60
+            discovery_timeout_secs = 10
         ";
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.server.host, "127.0.0.1");
@@ -213,6 +273,13 @@ mod tests {
         assert_eq!(config.database.url, "sqlite:test.db");
         assert_eq!(config.logging.filter, "debug");
         assert!(!config.integrations.virtual_enabled);
+        assert!(config.integrations.mqtt.enabled);
+        assert_eq!(config.integrations.mqtt.broker_host, "mqtt.local");
+        assert_eq!(config.integrations.mqtt.broker_port, 8883);
+        assert_eq!(config.integrations.mqtt.client_id, "my-hub");
+        assert_eq!(config.integrations.mqtt.base_topic, "home");
+        assert_eq!(config.integrations.mqtt.keep_alive_secs, 60);
+        assert_eq!(config.integrations.mqtt.discovery_timeout_secs, 10);
     }
 
     #[test]
