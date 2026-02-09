@@ -20,6 +20,7 @@
 //! Depends on `minihub-domain` only (plus `tokio::sync` for channels).
 //! Never imports adapter crates. Adapters depend on *this* crate, not the reverse.
 
+pub mod automation_engine;
 pub mod event_bus;
 pub mod ports;
 pub mod services;

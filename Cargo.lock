@@ -941,6 +941,7 @@ dependencies = [
 name = "minihub-app"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "minihub-domain",
  "serde_json",
  "tokio",
