@@ -14,6 +14,7 @@ minihub is a tiny Rust-only home automation server.
 - [ADR-006: cargo-llvm-cov for code coverage](#adr-006-cargo-llvm-cov-for-code-coverage)
 - [ADR-007: Use askama for HTML templating](#adr-007-use-askama-for-html-templating)
 - [ADR-008: Trait-based integration model with lifecycle and context injection](#adr-008-trait-based-integration-model-with-lifecycle-and-context-injection)
+- [ADR-009: Use rumqttc for MQTT client](#adr-009-use-rumqttc-for-mqtt-client)
 
 ---
 
@@ -302,3 +303,39 @@ Key design choices:
 **Negative:**
 - Adding a new integration type requires updating the binary crate's generic parameters
 - The `IntegrationContext` must be kept minimal to avoid coupling integrations to internal details
+
+---
+
+## ADR-009: Use rumqttc for MQTT client
+
+**Status:** Accepted
+
+**Date:** 2026-02-09
+
+### Context
+
+minihub needs an MQTT client library to connect to brokers and bridge MQTT-based devices (e.g. Zigbee2MQTT, Tasmota, ESPHome) into the system. The client must support async/await with tokio, automatic reconnection, and fit within the project's pure-Rust, no-unsafe constraint.
+
+### Decision
+
+Use rumqttc (v0.25) as the MQTT client library. rumqttc is a pure-Rust, async-first MQTT client backed by tokio, with built-in automatic reconnection via its eventloop model.
+
+### Alternatives Considered
+
+- **paho-mqtt**: Mature and feature-complete, but wraps the Eclipse Paho C library via FFI. Introduces a C toolchain dependency and potential unsafe code, violating the project's `unsafe_code = "forbid"` lint.
+- **mqttrs**: Low-level codec library — would require building the entire client layer (connection management, reconnection, keep-alive) from scratch.
+- **ntex-mqtt**: Tied to the ntex runtime rather than tokio.
+
+### Consequences
+
+**Positive:**
+- Pure Rust — no C dependencies, compatible with `unsafe_code = "forbid"`
+- Native tokio integration — fits the existing async runtime
+- Built-in automatic reconnection via the eventloop poll model
+- TLS support via rustls (default feature)
+- Active maintenance and widely used in the Rust IoT ecosystem
+
+**Negative:**
+- Eventloop model requires spawning a background task to drive `eventloop.poll()`
+- MQTT v5 support is available but less battle-tested than v3.1.1
+- Client and eventloop are separate objects that must be coordinated
