@@ -14,8 +14,8 @@
 - [Milestones](#milestones)
   - [M0 — Scaffold & Plan ✅](#m0--scaffold--plan-)
   - [M1 — Domain Model & App Core ✅](#m1--domain-model--app-core-)
-  - [M2 — HTTP API + SQLite Storage + Dashboard](#m2--http-api--sqlite-storage--dashboard)
-  - [M3 — Events & Automations](#m3--events--automations)
+  - [M2 — HTTP API + SQLite Storage + Dashboard ✅](#m2--http-api--sqlite-storage--dashboard-)
+  - [M3 — Events & Automations ✅](#m3--events--automations-)
   - [M4 — Virtual Integration](#m4--virtual-integration)
   - [M5 — Polish & Harden](#m5--polish--harden)
   - [M6 — MQTT Integration (Stretch)](#m6--mqtt-integration-stretch)
@@ -628,11 +628,11 @@ Similar structure to EntityService, with CRUD operations for Device and Area dom
 
 ---
 
-### M2 — HTTP API + SQLite Storage + Dashboard
+### M2 — HTTP API + SQLite Storage + Dashboard ✅
 
 **Goal**: Create a working server with REST API, SQLite persistence, and server-side rendered dashboard. Achieve 60% code coverage.
 
-**Status**: Done
+**Status**: ✅ Done
 
 **Prerequisites**: M1 complete
 
@@ -1200,11 +1200,11 @@ async fn test_full_crud_cycle() {
 
 ---
 
-### M3 — Events & Automations
+### M3 — Events & Automations ✅
 
 **Goal**: Implement event logging, in-process event bus, and automation engine. Achieve 70% code coverage.
 
-**Status**: Not Started
+**Status**: ✅ Done
 
 **Prerequisites**: M2 complete
 
