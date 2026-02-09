@@ -12,19 +12,14 @@
 //! - Define **driving/inbound ports** as use-case structs/traits:
 //!   - `EntityService` — register, update state, list, get
 //!   - `DeviceService` — register, list, get
-//!   - `ServiceCaller` — dispatch service calls
 //!   - `AutomationEngine` — evaluate triggers, run actions
+//! - Provide **in-process infrastructure** (event bus) that doesn't need IO
 //! - Orchestrate domain objects without knowing *how* persistence or IO works
 //!
 //! ## Dependency rule
-//! Depends on `minihub-domain` only.
+//! Depends on `minihub-domain` only (plus `tokio::sync` for channels).
 //! Never imports adapter crates. Adapters depend on *this* crate, not the reverse.
 
-// TODO(M1): Implement `ports::storage` — repository traits.
-// TODO(M1): Implement `services::entity_service` — entity use-cases.
-// TODO(M2): Implement `ports::event_bus` — event publishing trait.
-// TODO(M2): Implement `services::service_caller` — service dispatch.
-// TODO(M3): Implement `services::automation_engine` — automation evaluation.
-
+pub mod event_bus;
 pub mod ports;
 pub mod services;
