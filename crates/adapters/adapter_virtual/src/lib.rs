@@ -55,7 +55,7 @@ impl Integration for VirtualIntegration {
         let mut discovered = Vec::new();
 
         for vdev in self.devices.values() {
-            let (device, entity) = vdev.discover();
+            let (device, entity) = vdev.discover()?;
             discovered.push(DiscoveredDevice {
                 device,
                 entities: vec![entity],
@@ -76,7 +76,7 @@ impl Integration for VirtualIntegration {
             id: entity_id.to_string(),
         })?;
 
-        Ok(vdev.handle_service(service))
+        vdev.handle_service(service)
     }
 
     async fn teardown(&mut self) -> Result<(), MiniHubError> {
@@ -236,10 +236,8 @@ mod tests {
         integration
             .devices
             .values()
-            .map(|vd| {
-                let (_, e) = vd.discover();
-                e
-            })
+            .filter_map(|vd| vd.discover().ok())
+            .map(|(_, e)| e)
             .find(|e| e.entity_id == entity_id_str)
             .unwrap()
             .id
