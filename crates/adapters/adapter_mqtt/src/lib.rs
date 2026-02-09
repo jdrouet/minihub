@@ -587,4 +587,109 @@ mod tests {
         let result = integration.teardown().await;
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn should_use_default_manufacturer_and_model_when_missing() {
+        let json = serde_json::json!({
+            "device": { "name": "Simple" },
+            "entities": [
+                { "entity_id": "light.s", "friendly_name": "S" }
+            ]
+        });
+        let payload: DiscoveryPayload = serde_json::from_value(json).unwrap();
+        assert_eq!(payload.device.manufacturer, "");
+        assert_eq!(payload.device.model, "");
+    }
+
+    #[test]
+    fn should_set_device_id_on_discovered_entities() {
+        let mut integration = MqttIntegration::new(MqttConfig::default());
+
+        let payload = serde_json::json!({
+            "device": { "name": "Dev", "manufacturer": "M", "model": "X" },
+            "entities": [
+                { "entity_id": "light.one", "friendly_name": "One", "state": "off" },
+                { "entity_id": "light.two", "friendly_name": "Two", "state": "on" }
+            ]
+        });
+
+        let publish =
+            rumqttc::Publish::new("minihub/dev/config", QoS::AtLeastOnce, payload.to_string());
+
+        let dd = integration
+            .handle_config_message(&publish)
+            .unwrap()
+            .unwrap();
+        let device_id = dd.device.id;
+        for entity in &dd.entities {
+            assert_eq!(entity.device_id, device_id);
+        }
+    }
+
+    #[test]
+    fn should_handle_entity_id_without_dot_in_slug() {
+        let mut integration = MqttIntegration::new(MqttConfig::default());
+
+        let payload = serde_json::json!({
+            "device": { "name": "Dev" },
+            "entities": [
+                { "entity_id": "nodot", "friendly_name": "No Dot", "state": "off" }
+            ]
+        });
+
+        let publish =
+            rumqttc::Publish::new("minihub/dev/config", QoS::AtLeastOnce, payload.to_string());
+
+        let dd = integration
+            .handle_config_message(&publish)
+            .unwrap()
+            .unwrap();
+        let entity_id = dd.entities[0].id;
+        let cmd_topic = integration.command_topics.get(&entity_id).unwrap();
+        assert_eq!(cmd_topic, "minihub/dev/nodot/set");
+    }
+
+    #[test]
+    fn should_set_keep_alive_from_config() {
+        let config = MqttConfig {
+            keep_alive_secs: 60,
+            ..MqttConfig::default()
+        };
+        let integration = MqttIntegration::new(config);
+        let opts = integration.mqtt_options();
+        assert_eq!(opts.keep_alive(), Duration::from_secs(60));
+    }
+
+    #[tokio::test]
+    async fn should_return_not_connected_error_when_subscribing_without_client() {
+        let integration = MqttIntegration::new(MqttConfig::default());
+        let result = integration.subscribe_topics().await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), MqttError::NotConnected));
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_service_call_without_client() {
+        let config = MqttConfig::default();
+        let mut integration = MqttIntegration::new(config);
+
+        let payload = serde_json::json!({
+            "device": { "name": "Dev", "manufacturer": "M", "model": "X" },
+            "entities": [
+                { "entity_id": "light.x", "friendly_name": "X", "state": "off" }
+            ]
+        });
+        let publish =
+            rumqttc::Publish::new("minihub/dev/config", QoS::AtLeastOnce, payload.to_string());
+        let dd = integration
+            .handle_config_message(&publish)
+            .unwrap()
+            .unwrap();
+        let entity_id = dd.entities[0].id;
+
+        let result = integration
+            .handle_service_call(entity_id, "turn_on", serde_json::json!({}))
+            .await;
+        assert!(result.is_err());
+    }
 }
