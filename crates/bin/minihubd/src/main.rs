@@ -28,8 +28,8 @@ use minihub_adapter_storage_sqlite_sqlx::{
 };
 use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
-use minihub_app::ports::Integration;
 use minihub_app::ports::integration::DiscoveredDevice;
+use minihub_app::ports::{EventStore, Integration};
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
@@ -68,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Event bus
     let event_bus = InProcessEventBus::new(256);
+    let mut event_rx = event_bus.subscribe();
 
     // Services (Arc-wrapped early so they can be shared with background tasks)
     let entity_service = Arc::new(EntityService::new(entity_repo, event_bus));
@@ -75,6 +76,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let area_service = Arc::new(AreaService::new(area_repo));
     let automation_service = Arc::new(AutomationService::new(automation_repo));
     let event_store = Arc::new(event_store);
+
+    // Persist events from the bus to the store
+    let es = Arc::clone(&event_store);
+    tokio::spawn(async move {
+        while let Ok(event) = event_rx.recv().await {
+            if let Err(err) = es.store(event).await {
+                tracing::warn!(%err, "failed to persist event");
+            }
+        }
+        tracing::debug!("event store subscriber stopped");
+    });
 
     // Integrations
     setup_integrations(&config, &device_service, &entity_service).await?;
