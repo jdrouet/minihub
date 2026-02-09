@@ -19,6 +19,7 @@ where
     Router::new()
         .route("/health", get(health_check))
         .nest("/api", crate::api::routes())
+        .merge(crate::dashboard::routes())
         .with_state(state)
 }
 

@@ -17,6 +17,7 @@
 //! into the domain.
 
 pub mod api;
+pub mod dashboard;
 mod error;
 pub mod router;
 pub mod state;
