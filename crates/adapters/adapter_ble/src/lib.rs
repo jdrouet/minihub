@@ -82,9 +82,12 @@ impl Integration for BleIntegration {
         let interval = Duration::from_secs(u64::from(self.config.update_interval_secs));
         let device_filter = self.config.device_filter.clone();
 
-        let mut scanner = BleScanner::new(ctx, scan_duration, interval, device_filter);
-        let handle = scanner.start();
-        self.scan_handle = Some(handle);
+        self.scan_handle = Some(BleScanner::start(
+            ctx,
+            scan_duration,
+            interval,
+            device_filter,
+        ));
 
         tracing::info!(
             interval_secs = self.config.update_interval_secs,

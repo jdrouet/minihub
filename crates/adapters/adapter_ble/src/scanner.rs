@@ -55,20 +55,12 @@ pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevi
     })
 }
 
-/// Check whether the given MAC address passes the device filter.
-fn passes_filter(device_filter: &[String], mac: &str) -> bool {
-    if device_filter.is_empty() {
-        return true;
-    }
-    device_filter.iter().any(|f| f.eq_ignore_ascii_case(mac))
-}
-
 /// Passive BLE scanner that discovers sensors and persists them in real time.
 ///
 /// Each received advertisement is immediately persisted via the
 /// [`IntegrationContext`] — there is no batching or post-scan persistence step.
 pub struct BleScanner<C> {
-    ctx: C,
+    context: C,
     scan_duration: Duration,
     interval: Duration,
     device_filter: Vec<String>,
@@ -76,48 +68,40 @@ pub struct BleScanner<C> {
 
 impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     /// Create a new scanner with the given context and configuration.
-    pub fn new(
-        ctx: C,
+    pub fn start(
+        context: C,
         scan_duration: Duration,
         interval: Duration,
         device_filter: Vec<String>,
-    ) -> Self {
-        Self {
-            ctx,
+    ) -> JoinHandle<()> {
+        let scanner = Self {
+            context,
             scan_duration,
             interval,
             device_filter,
-        }
-    }
+        };
 
-    /// Start continuous background scanning.
-    ///
-    /// Spawns a tokio task that runs [`scan_loop`](Self::scan_loop) and
-    /// returns the [`JoinHandle`]. Abort the handle to stop scanning.
-    pub fn start(&mut self) -> JoinHandle<()> {
-        let ctx = self.ctx.clone();
-        let scan_duration = self.scan_duration;
-        let interval = self.interval;
-        let device_filter = self.device_filter.clone();
-
-        tokio::spawn(async move {
-            Self::scan_loop(ctx, scan_duration, interval, &device_filter).await;
-        })
+        tokio::spawn(scanner.run())
     }
 
     /// Continuous scan loop — runs a scan, waits for the interval, repeats.
-    async fn scan_loop(
-        ctx: C,
-        scan_duration: Duration,
-        interval: Duration,
-        device_filter: &[String],
-    ) {
+    async fn run(self) {
         loop {
-            if let Err(err) = Self::run_scan(&ctx, scan_duration, device_filter).await {
+            if let Err(err) = self.iterate().await {
                 tracing::warn!(%err, "BLE background scan failed, retrying next interval");
             }
-            tokio::time::sleep(interval).await;
+            tokio::time::sleep(self.interval).await;
         }
+    }
+
+    /// Check whether the given MAC address passes the device filter.
+    fn passes_filter(&self, mac: &str) -> bool {
+        if self.device_filter.is_empty() {
+            return true;
+        }
+        self.device_filter
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case(mac))
     }
 
     /// Run a single BLE scan for the given duration.
@@ -129,11 +113,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     ///
     /// Returns [`BleError`] when the BLE adapter is unavailable or the scan
     /// cannot be started.
-    async fn run_scan(
-        ctx: &C,
-        duration: Duration,
-        device_filter: &[String],
-    ) -> Result<(), BleError> {
+    async fn iterate(&self) -> Result<(), BleError> {
         let manager = Manager::new().await?;
         let adapters = manager.adapters().await?;
         let central = adapters.into_iter().next().ok_or(BleError::NotAvailable)?;
@@ -146,7 +126,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
             })
             .await?;
 
-        let deadline = tokio::time::Instant::now() + duration;
+        let deadline = tokio::time::Instant::now() + self.scan_duration;
 
         while tokio::time::Instant::now() < deadline {
             let remaining = deadline - tokio::time::Instant::now();
@@ -158,7 +138,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                         };
 
                         let mac_str = parser::format_mac(reading.mac);
-                        if !passes_filter(device_filter, &mac_str) {
+                        if !self.passes_filter(&mac_str) {
                             tracing::debug!(mac = %mac_str, "filtered out by device_filter");
                             continue;
                         }
@@ -171,7 +151,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                         let dd = build_discovered(&reading).map_err(BleError::Domain)?;
 
                         tracing::debug!(mac = %mac_str, "persisting BLE sensor reading");
-                        if let Err(err) = ctx.persist_discovered(dd).await {
+                        if let Err(err) = self.context.persist_discovered(dd).await {
                             tracing::warn!(%err, mac = %mac_str, "failed to persist BLE discovery");
                         }
                     }
