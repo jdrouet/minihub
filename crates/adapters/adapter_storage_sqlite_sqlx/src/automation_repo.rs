@@ -1,6 +1,5 @@
 //! `SQLite` implementation of [`AutomationRepository`].
 
-use std::future::Future;
 use std::str::FromStr;
 
 use sqlx::sqlite::SqliteRow;
@@ -72,22 +71,17 @@ impl SqliteAutomationRepository {
 }
 
 impl AutomationRepository for SqliteAutomationRepository {
-    fn create(
-        &self,
-        automation: Automation,
-    ) -> impl Future<Output = Result<Automation, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let id = automation.id.to_string();
-            let trigger_json =
-                serde_json::to_string(&automation.trigger).map_err(StorageError::from)?;
-            let conditions_json =
-                serde_json::to_string(&automation.conditions).map_err(StorageError::from)?;
-            let actions_json =
-                serde_json::to_string(&automation.actions).map_err(StorageError::from)?;
-            let last_triggered = automation.last_triggered.map(|ts| ts.to_rfc3339());
+    async fn create(&self, automation: Automation) -> Result<Automation, MiniHubError> {
+        let id = automation.id.as_uuid();
+        let trigger_json =
+            serde_json::to_string(&automation.trigger).map_err(StorageError::from)?;
+        let conditions_json =
+            serde_json::to_string(&automation.conditions).map_err(StorageError::from)?;
+        let actions_json =
+            serde_json::to_string(&automation.actions).map_err(StorageError::from)?;
+        let last_triggered = automation.last_triggered.map(|ts| ts.to_rfc3339());
 
-            sqlx::query(
+        sqlx::query(
                 "INSERT INTO automations (id, name, enabled, trigger_data, conditions, actions, last_triggered) VALUES (?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&id)
@@ -97,68 +91,50 @@ impl AutomationRepository for SqliteAutomationRepository {
             .bind(&conditions_json)
             .bind(&actions_json)
             .bind(&last_triggered)
-            .execute(&pool)
+            .execute(&self.pool)
             .await
             .map_err(StorageError::from)?;
 
-            Ok(automation)
-        }
+        Ok(automation)
     }
 
-    fn get_by_id(
-        &self,
-        id: AutomationId,
-    ) -> impl Future<Output = Result<Option<Automation>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let row: Option<Wrapper> = sqlx::query_as("SELECT * FROM automations WHERE id = ?")
-                .bind(id.to_string())
-                .fetch_optional(&pool)
+    async fn get_by_id(&self, id: AutomationId) -> Result<Option<Automation>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as("SELECT * FROM automations WHERE id = ?")
+            .bind(id.as_uuid())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
+        Ok(Wrapper::maybe(row))
+    }
+
+    async fn get_all(&self) -> Result<Vec<Automation>, MiniHubError> {
+        let rows: Vec<Wrapper> = sqlx::query_as("SELECT * FROM automations ORDER BY name")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
+        Ok(rows.into_iter().map(|w| w.0).collect())
+    }
+
+    async fn get_enabled(&self) -> Result<Vec<Automation>, MiniHubError> {
+        let rows: Vec<Wrapper> =
+            sqlx::query_as("SELECT * FROM automations WHERE enabled = 1 ORDER BY name")
+                .fetch_all(&self.pool)
                 .await
                 .map_err(StorageError::from)?;
-            Ok(Wrapper::maybe(row))
-        }
+        Ok(rows.into_iter().map(|w| w.0).collect())
     }
 
-    fn get_all(&self) -> impl Future<Output = Result<Vec<Automation>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let rows: Vec<Wrapper> = sqlx::query_as("SELECT * FROM automations ORDER BY name")
-                .fetch_all(&pool)
-                .await
-                .map_err(StorageError::from)?;
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
-    }
+    async fn update(&self, automation: Automation) -> Result<Automation, MiniHubError> {
+        let id = automation.id.as_uuid();
+        let trigger_json =
+            serde_json::to_string(&automation.trigger).map_err(StorageError::from)?;
+        let conditions_json =
+            serde_json::to_string(&automation.conditions).map_err(StorageError::from)?;
+        let actions_json =
+            serde_json::to_string(&automation.actions).map_err(StorageError::from)?;
+        let last_triggered = automation.last_triggered.map(|ts| ts.to_rfc3339());
 
-    fn get_enabled(&self) -> impl Future<Output = Result<Vec<Automation>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let rows: Vec<Wrapper> =
-                sqlx::query_as("SELECT * FROM automations WHERE enabled = 1 ORDER BY name")
-                    .fetch_all(&pool)
-                    .await
-                    .map_err(StorageError::from)?;
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
-    }
-
-    fn update(
-        &self,
-        automation: Automation,
-    ) -> impl Future<Output = Result<Automation, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let id = automation.id.to_string();
-            let trigger_json =
-                serde_json::to_string(&automation.trigger).map_err(StorageError::from)?;
-            let conditions_json =
-                serde_json::to_string(&automation.conditions).map_err(StorageError::from)?;
-            let actions_json =
-                serde_json::to_string(&automation.actions).map_err(StorageError::from)?;
-            let last_triggered = automation.last_triggered.map(|ts| ts.to_rfc3339());
-
-            sqlx::query(
+        sqlx::query(
                 "UPDATE automations SET name = ?, enabled = ?, trigger_data = ?, conditions = ?, actions = ?, last_triggered = ? WHERE id = ?",
             )
             .bind(&automation.name)
@@ -168,24 +144,20 @@ impl AutomationRepository for SqliteAutomationRepository {
             .bind(&actions_json)
             .bind(&last_triggered)
             .bind(&id)
-            .execute(&pool)
+            .execute(&self.pool)
             .await
             .map_err(StorageError::from)?;
 
-            Ok(automation)
-        }
+        Ok(automation)
     }
 
-    fn delete(&self, id: AutomationId) -> impl Future<Output = Result<(), MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query("DELETE FROM automations WHERE id = ?")
-                .bind(id.to_string())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
-            Ok(())
-        }
+    async fn delete(&self, id: AutomationId) -> Result<(), MiniHubError> {
+        sqlx::query("DELETE FROM automations WHERE id = ?")
+            .bind(id.as_uuid())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
+        Ok(())
     }
 }
 

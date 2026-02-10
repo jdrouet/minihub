@@ -1,6 +1,5 @@
 //! `SQLite` implementation of [`DeviceRepository`].
 
-use std::future::Future;
 use std::str::FromStr;
 
 use sqlx::sqlite::SqliteRow;
@@ -73,103 +72,80 @@ impl SqliteDeviceRepository {
 }
 
 impl DeviceRepository for SqliteDeviceRepository {
-    fn create(&self, device: Device) -> impl Future<Output = Result<Device, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query(INSERT)
-                .bind(device.id.to_string())
-                .bind(&device.name)
-                .bind(&device.manufacturer)
-                .bind(&device.model)
-                .bind(device.area_id.map(|id| id.to_string()))
-                .bind(&device.integration)
-                .bind(&device.unique_id)
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn create(&self, device: Device) -> Result<Device, MiniHubError> {
+        sqlx::query(INSERT)
+            .bind(device.id.as_uuid())
+            .bind(&device.name)
+            .bind(&device.manufacturer)
+            .bind(&device.model)
+            .bind(device.area_id.map(|id| id.as_uuid()))
+            .bind(&device.integration)
+            .bind(&device.unique_id)
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(device)
-        }
+        Ok(device)
     }
 
-    fn get_by_id(
-        &self,
-        id: DeviceId,
-    ) -> impl Future<Output = Result<Option<Device>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
-                .bind(id.to_string())
-                .fetch_optional(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_by_id(&self, id: DeviceId) -> Result<Option<Device>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(Wrapper::maybe(row))
-        }
+        Ok(Wrapper::maybe(row))
     }
 
-    fn get_all(&self) -> impl Future<Output = Result<Vec<Device>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let rows: Vec<Wrapper> = sqlx::query_as(SELECT_ALL)
-                .fetch_all(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_all(&self) -> Result<Vec<Device>, MiniHubError> {
+        let rows: Vec<Wrapper> = sqlx::query_as(SELECT_ALL)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
+        Ok(rows.into_iter().map(|w| w.0).collect())
     }
 
-    fn find_by_integration_unique_id(
+    async fn find_by_integration_unique_id(
         &self,
         integration: &str,
         unique_id: &str,
-    ) -> impl Future<Output = Result<Option<Device>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        let integration = integration.to_string();
-        let unique_id = unique_id.to_string();
-        async move {
-            let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_INTEGRATION_UNIQUE_ID)
-                .bind(&integration)
-                .bind(&unique_id)
-                .fetch_optional(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    ) -> Result<Option<Device>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_INTEGRATION_UNIQUE_ID)
+            .bind(integration)
+            .bind(unique_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(Wrapper::maybe(row))
-        }
+        Ok(Wrapper::maybe(row))
     }
 
-    fn update(&self, device: Device) -> impl Future<Output = Result<Device, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query(UPDATE)
-                .bind(&device.name)
-                .bind(&device.manufacturer)
-                .bind(&device.model)
-                .bind(device.area_id.map(|id| id.to_string()))
-                .bind(&device.integration)
-                .bind(&device.unique_id)
-                .bind(device.id.to_string())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn update(&self, device: Device) -> Result<Device, MiniHubError> {
+        sqlx::query(UPDATE)
+            .bind(&device.name)
+            .bind(&device.manufacturer)
+            .bind(&device.model)
+            .bind(device.area_id.map(|id| id.as_uuid()))
+            .bind(&device.integration)
+            .bind(&device.unique_id)
+            .bind(device.id.as_uuid())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(device)
-        }
+        Ok(device)
     }
 
-    fn delete(&self, id: DeviceId) -> impl Future<Output = Result<(), MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query(DELETE_BY_ID)
-                .bind(id.to_string())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn delete(&self, id: DeviceId) -> Result<(), MiniHubError> {
+        sqlx::query(DELETE_BY_ID)
+            .bind(id.as_uuid())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(())
-        }
+        Ok(())
     }
 }
 
