@@ -20,6 +20,7 @@ use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
+use minihub_app::services::integration_context::ServiceContext;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -846,10 +847,10 @@ async fn app_with_virtual() -> axum::Router {
     let event_store = SqliteEventStore::new(pool.clone());
     let automation_repo = SqliteAutomationRepository::new(pool);
 
-    let event_bus = InProcessEventBus::new(256);
+    let event_bus = Arc::new(InProcessEventBus::new(256));
     let mut event_rx = event_bus.subscribe();
 
-    let entity_service = Arc::new(EntityService::new(entity_repo, event_bus));
+    let entity_service = Arc::new(EntityService::new(entity_repo, Arc::clone(&event_bus)));
     let device_service = Arc::new(DeviceService::new(device_repo));
     let area_service = Arc::new(AreaService::new(area_repo));
     let event_store = Arc::new(event_store);
@@ -864,14 +865,13 @@ async fn app_with_virtual() -> axum::Router {
     });
 
     // Run virtual integration setup — same as minihubd main()
+    let ctx = ServiceContext::new(
+        Arc::clone(&device_service),
+        Arc::clone(&entity_service),
+        event_bus,
+    );
     let mut virtual_integration = VirtualIntegration::default();
-    let discovered = virtual_integration.setup().await.unwrap();
-    for dd in discovered {
-        let _ = device_service.upsert_device(dd.device).await;
-        for entity in dd.entities {
-            let _ = entity_service.upsert_entity(entity).await;
-        }
-    }
+    virtual_integration.setup(&ctx).await.unwrap();
 
     let state = AppState::from_arcs(
         entity_service,

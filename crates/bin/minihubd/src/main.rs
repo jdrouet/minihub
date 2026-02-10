@@ -28,13 +28,12 @@ use minihub_adapter_storage_sqlite_sqlx::{
 };
 use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
-use minihub_app::ports::integration::DiscoveredDevice;
 use minihub_app::ports::{EventStore, Integration};
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
 use minihub_app::services::device_service::DeviceService;
 use minihub_app::services::entity_service::EntityService;
-use minihub_domain::error::MiniHubError;
+use minihub_app::services::integration_context::ServiceContext;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Config;
@@ -66,18 +65,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_store = SqliteEventStore::new(pool.clone());
     let automation_repo = SqliteAutomationRepository::new(pool);
 
-    // Event bus
-    let event_bus = InProcessEventBus::new(256);
+    // Event bus (Arc-wrapped so it can be shared with ServiceContext)
+    let event_bus = Arc::new(InProcessEventBus::new(256));
     let mut event_rx = event_bus.subscribe();
 
     // Services (Arc-wrapped early so they can be shared with background tasks)
-    let entity_service = Arc::new(EntityService::new(entity_repo, event_bus));
+    let entity_service = Arc::new(EntityService::new(entity_repo, Arc::clone(&event_bus)));
     let device_service = Arc::new(DeviceService::new(device_repo));
     let area_service = Arc::new(AreaService::new(area_repo));
     let automation_service = Arc::new(AutomationService::new(automation_repo));
     let event_store = Arc::new(event_store);
 
-    // Persist events from the bus to the store
+    // Event worker — persists events from the bus to the store
     let es = Arc::clone(&event_store);
     tokio::spawn(async move {
         while let Ok(event) = event_rx.recv().await {
@@ -88,8 +87,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::debug!("event store subscriber stopped");
     });
 
+    // Integration context — shared by all integrations
+    let ctx = ServiceContext::new(
+        Arc::clone(&device_service),
+        Arc::clone(&entity_service),
+        event_bus,
+    );
+
     // Integrations
-    setup_integrations(&config, &device_service, &entity_service).await?;
+    if config.integrations.virtual_enabled {
+        let mut integration = VirtualIntegration::default();
+        integration.setup(&ctx).await?;
+        tracing::info!(
+            integration = integration.name(),
+            "virtual integration ready"
+        );
+    }
+
+    if config.integrations.mqtt.enabled {
+        let mqtt_config = MqttConfig {
+            broker_host: config.integrations.mqtt.broker_host.clone(),
+            broker_port: config.integrations.mqtt.broker_port,
+            client_id: config.integrations.mqtt.client_id.clone(),
+            base_topic: config.integrations.mqtt.base_topic.clone(),
+            keep_alive_secs: config.integrations.mqtt.keep_alive_secs,
+        };
+        let mut integration = MqttIntegration::new(mqtt_config);
+        integration.setup(&ctx).await?;
+        integration.start_background(ctx.clone()).await?;
+        tracing::info!(
+            integration = integration.name(),
+            broker = %config.integrations.mqtt.broker_host,
+            port = config.integrations.mqtt.broker_port,
+            "MQTT integration ready"
+        );
+    }
+
+    if config.integrations.ble.enabled {
+        let ble_config = BleConfig {
+            scan_duration_secs: config.integrations.ble.scan_duration_secs,
+            update_interval_secs: config.integrations.ble.update_interval_secs,
+            device_filter: config.integrations.ble.device_filter.clone(),
+        };
+        let mut integration = BleIntegration::new(ble_config);
+        integration.setup(&ctx).await?;
+        integration.start_background(ctx.clone()).await?;
+        tracing::info!(integration = integration.name(), "BLE integration ready");
+    }
 
     // HTTP
     let state = AppState::from_arcs(
@@ -110,100 +154,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     tracing::info!("shutdown complete");
-    Ok(())
-}
-
-/// Set up all enabled integrations, persisting discovered devices/entities.
-async fn setup_integrations<DR, ER, EP>(
-    config: &Config,
-    device_service: &Arc<DeviceService<DR>>,
-    entity_service: &Arc<EntityService<ER, EP>>,
-) -> Result<(), MiniHubError>
-where
-    DR: minihub_app::ports::DeviceRepository + Send + Sync + 'static,
-    ER: minihub_app::ports::EntityRepository + Send + Sync + 'static,
-    EP: minihub_app::ports::EventPublisher + Send + Sync + 'static,
-{
-    // Virtual integration — discover and register simulated devices
-    if config.integrations.virtual_enabled {
-        let mut virtual_integration = VirtualIntegration::default();
-        let discovered = virtual_integration.setup().await?;
-        for dd in discovered {
-            let _ = device_service.upsert_device(dd.device).await;
-            for entity in dd.entities {
-                let _ = entity_service.upsert_entity(entity).await;
-            }
-        }
-        tracing::info!(
-            integration = virtual_integration.name(),
-            "virtual integration ready"
-        );
-    }
-
-    // MQTT integration — connect to broker and discover devices
-    if config.integrations.mqtt.enabled {
-        let mqtt_config = MqttConfig {
-            broker_host: config.integrations.mqtt.broker_host.clone(),
-            broker_port: config.integrations.mqtt.broker_port,
-            client_id: config.integrations.mqtt.client_id.clone(),
-            base_topic: config.integrations.mqtt.base_topic.clone(),
-            keep_alive_secs: config.integrations.mqtt.keep_alive_secs,
-            discovery_timeout_secs: config.integrations.mqtt.discovery_timeout_secs,
-        };
-        let mut mqtt_integration = MqttIntegration::new(mqtt_config);
-        let discovered = mqtt_integration.setup().await?;
-        for dd in discovered {
-            let _ = device_service.upsert_device(dd.device).await;
-            for entity in dd.entities {
-                let _ = entity_service.upsert_entity(entity).await;
-            }
-        }
-        tracing::info!(
-            integration = mqtt_integration.name(),
-            broker = %config.integrations.mqtt.broker_host,
-            port = config.integrations.mqtt.broker_port,
-            "MQTT integration ready"
-        );
-    }
-
-    // BLE integration — passively scan for BLE sensors
-    if config.integrations.ble.enabled {
-        let ble_config = BleConfig {
-            scan_duration_secs: config.integrations.ble.scan_duration_secs,
-            update_interval_secs: config.integrations.ble.update_interval_secs,
-            device_filter: config.integrations.ble.device_filter.clone(),
-        };
-
-        let (ble_tx, mut ble_rx) = tokio::sync::mpsc::channel::<DiscoveredDevice>(64);
-        let mut ble_integration = BleIntegration::new(ble_config, Some(ble_tx));
-
-        let discovered = ble_integration.setup().await?;
-        for dd in discovered {
-            let _ = device_service.upsert_device(dd.device).await;
-            for entity in dd.entities {
-                let _ = entity_service.upsert_entity(entity).await;
-            }
-        }
-
-        // Spawn receiver task for background BLE discoveries
-        let ds = Arc::clone(device_service);
-        let es = Arc::clone(entity_service);
-        tokio::spawn(async move {
-            while let Some(dd) = ble_rx.recv().await {
-                let _ = ds.upsert_device(dd.device).await;
-                for entity in dd.entities {
-                    let _ = es.upsert_entity(entity).await;
-                }
-            }
-            tracing::debug!("BLE discovery channel closed");
-        });
-
-        tracing::info!(
-            integration = ble_integration.name(),
-            "BLE integration ready"
-        );
-    }
-
     Ok(())
 }
 
