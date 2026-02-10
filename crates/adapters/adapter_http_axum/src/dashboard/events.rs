@@ -10,6 +10,7 @@ use minihub_app::ports::{
 };
 use minihub_domain::event::Event;
 
+use super::DashboardError;
 use crate::state::AppState;
 
 /// Event log page template.
@@ -29,7 +30,7 @@ impl IntoResponse for EventListTemplate {
 /// `GET /events` — list recent events.
 pub async fn list<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
-) -> EventListTemplate
+) -> Result<EventListTemplate, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -38,10 +39,10 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let events = state.event_store.get_recent(50).await.unwrap_or_default();
+    let events = state.event_store.get_recent(50).await?;
 
-    EventListTemplate {
+    Ok(EventListTemplate {
         refresh_seconds: 5,
         events,
-    }
+    })
 }
