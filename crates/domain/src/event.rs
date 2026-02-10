@@ -27,6 +27,7 @@ pub enum EventType {
     EntityCreated,
     EntityRemoved,
     AutomationTriggered,
+    DeviceDetected,
 }
 
 impl Event {
@@ -55,6 +56,7 @@ impl EventType {
             Self::EntityCreated => "entity_created",
             Self::EntityRemoved => "entity_removed",
             Self::AutomationTriggered => "automation_triggered",
+            Self::DeviceDetected => "device_detected",
         }
     }
 }
@@ -127,6 +129,7 @@ mod tests {
             EventType::EntityCreated,
             EventType::EntityRemoved,
             EventType::AutomationTriggered,
+            EventType::DeviceDetected,
         ];
 
         for variant in &variants {
@@ -144,5 +147,6 @@ mod tests {
             EventType::AutomationTriggered.to_string(),
             "automation_triggered"
         );
+        assert_eq!(EventType::DeviceDetected.to_string(), "device_detected");
     }
 }

@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use btleplug::api::{Central, CentralEvent, Manager as _, ScanFilter};
+use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::Manager;
 use tokio::task::JoinHandle;
 use tokio_stream::StreamExt as _;
@@ -15,9 +15,10 @@ use minihub_app::ports::integration::{DiscoveredDevice, IntegrationContext};
 use minihub_domain::device::Device;
 use minihub_domain::entity::{AttributeValue, Entity, EntityState};
 use minihub_domain::error::MiniHubError;
+use minihub_domain::event::{Event, EventType};
 
 use crate::error::BleError;
-use crate::parser::{self, SERVICE_UUID_181A, SensorReading};
+use crate::parser::{self, SensorReading};
 
 /// Build a [`DiscoveredDevice`] from a [`SensorReading`].
 pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevice, MiniHubError> {
@@ -120,11 +121,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
 
         let mut events = central.events().await?;
 
-        central
-            .start_scan(ScanFilter {
-                services: vec![SERVICE_UUID_181A],
-            })
-            .await?;
+        central.start_scan(ScanFilter::default()).await?;
 
         let deadline = tokio::time::Instant::now() + self.scan_duration;
 
@@ -153,6 +150,27 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                         tracing::debug!(mac = %mac_str, "persisting BLE sensor reading");
                         if let Err(err) = self.context.persist_discovered(dd).await {
                             tracing::warn!(%err, mac = %mac_str, "failed to persist BLE discovery");
+                        }
+                    }
+                }
+                Ok(Some(CentralEvent::DeviceDiscovered(id) | CentralEvent::DeviceUpdated(id))) => {
+                    if let Ok(peripheral) = central.peripheral(&id).await {
+                        if let Ok(Some(props)) = peripheral.properties().await {
+                            let mac = props.address.to_string();
+                            tracing::trace!(%mac, name = ?props.local_name, "BLE device detected");
+                            let event = Event::new(
+                                EventType::DeviceDetected,
+                                None,
+                                serde_json::json!({
+                                    "integration": "ble",
+                                    "mac": mac,
+                                    "name": props.local_name,
+                                    "rssi": props.rssi,
+                                }),
+                            );
+                            if let Err(err) = self.context.publish(event).await {
+                                tracing::warn!(%err, %mac, "failed to publish device_detected event");
+                            }
                         }
                     }
                 }
