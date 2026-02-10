@@ -7,3 +7,4 @@ pub mod area_service;
 pub mod automation_service;
 pub mod device_service;
 pub mod entity_service;
+pub mod integration_context;
