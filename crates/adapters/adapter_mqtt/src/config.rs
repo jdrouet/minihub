@@ -16,8 +16,6 @@ pub struct MqttConfig {
     pub base_topic: String,
     /// Keep-alive interval in seconds.
     pub keep_alive_secs: u16,
-    /// How long to wait for discovery messages during setup, in seconds.
-    pub discovery_timeout_secs: u16,
 }
 
 impl Default for MqttConfig {
@@ -28,7 +26,6 @@ impl Default for MqttConfig {
             client_id: "minihub".to_string(),
             base_topic: "minihub".to_string(),
             keep_alive_secs: 30,
-            discovery_timeout_secs: 3,
         }
     }
 }
@@ -45,7 +42,6 @@ mod tests {
         assert_eq!(config.client_id, "minihub");
         assert_eq!(config.base_topic, "minihub");
         assert_eq!(config.keep_alive_secs, 30);
-        assert_eq!(config.discovery_timeout_secs, 3);
     }
 
     #[test]
@@ -56,7 +52,6 @@ mod tests {
             client_id = "my-hub"
             base_topic = "home"
             keep_alive_secs = 60
-            discovery_timeout_secs = 10
         "#;
         let config: MqttConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.broker_host, "mqtt.example.com");
@@ -64,7 +59,6 @@ mod tests {
         assert_eq!(config.client_id, "my-hub");
         assert_eq!(config.base_topic, "home");
         assert_eq!(config.keep_alive_secs, 60);
-        assert_eq!(config.discovery_timeout_secs, 10);
     }
 
     #[test]

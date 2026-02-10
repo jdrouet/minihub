@@ -1,6 +1,5 @@
 //! `SQLite` implementation of [`EventStore`].
 
-use std::future::Future;
 use std::str::FromStr;
 
 use sqlx::sqlite::SqliteRow;
@@ -76,75 +75,57 @@ impl SqliteEventStore {
 }
 
 impl EventStore for SqliteEventStore {
-    fn store(&self, event: Event) -> impl Future<Output = Result<Event, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let data_json = serde_json::to_string(&event.data).map_err(StorageError::from)?;
+    async fn store(&self, event: Event) -> Result<Event, MiniHubError> {
+        let data_json = serde_json::to_string(&event.data).map_err(StorageError::from)?;
 
-            sqlx::query(INSERT)
-                .bind(event.id.to_string())
-                .bind(event.event_type.to_string())
-                .bind(event.entity_id.map(|id| id.to_string()))
-                .bind(event.timestamp.to_rfc3339())
-                .bind(&data_json)
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+        sqlx::query(INSERT)
+            .bind(event.id.as_uuid())
+            .bind(event.event_type.as_str())
+            .bind(event.entity_id.map(|id| id.as_uuid()))
+            .bind(event.timestamp.to_rfc3339())
+            .bind(&data_json)
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(event)
-        }
+        Ok(event)
     }
 
-    fn get_by_id(
-        &self,
-        id: EventId,
-    ) -> impl Future<Output = Result<Option<Event>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
-                .bind(id.to_string())
-                .fetch_optional(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_by_id(&self, id: EventId) -> Result<Option<Event>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
+            .bind(id.as_uuid())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(Wrapper::maybe(row))
-        }
+        Ok(Wrapper::maybe(row))
     }
 
-    fn get_recent(
-        &self,
-        limit: usize,
-    ) -> impl Future<Output = Result<Vec<Event>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let limit = i32::try_from(limit).unwrap_or(i32::MAX);
-            let rows: Vec<Wrapper> = sqlx::query_as(SELECT_RECENT)
-                .bind(limit)
-                .fetch_all(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_recent(&self, limit: usize) -> Result<Vec<Event>, MiniHubError> {
+        let limit = i32::try_from(limit).unwrap_or(i32::MAX);
+        let rows: Vec<Wrapper> = sqlx::query_as(SELECT_RECENT)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
+        Ok(rows.into_iter().map(|w| w.0).collect())
     }
 
-    fn find_by_entity(
+    async fn find_by_entity(
         &self,
         entity_id: EntityId,
         limit: usize,
-    ) -> impl Future<Output = Result<Vec<Event>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let limit = i32::try_from(limit).unwrap_or(i32::MAX);
-            let rows: Vec<Wrapper> = sqlx::query_as(SELECT_BY_ENTITY)
-                .bind(entity_id.to_string())
-                .bind(limit)
-                .fetch_all(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    ) -> Result<Vec<Event>, MiniHubError> {
+        let limit = i32::try_from(limit).unwrap_or(i32::MAX);
+        let rows: Vec<Wrapper> = sqlx::query_as(SELECT_BY_ENTITY)
+            .bind(entity_id.as_uuid())
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
+        Ok(rows.into_iter().map(|w| w.0).collect())
     }
 }
 

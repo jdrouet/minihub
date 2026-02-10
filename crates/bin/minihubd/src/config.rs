@@ -74,8 +74,6 @@ pub struct MqttIntegrationConfig {
     pub base_topic: String,
     /// Keep-alive interval in seconds.
     pub keep_alive_secs: u16,
-    /// How long to wait for discovery messages during setup, in seconds.
-    pub discovery_timeout_secs: u16,
 }
 
 /// BLE passive scanner integration configuration.
@@ -225,7 +223,6 @@ impl Default for MqttIntegrationConfig {
             client_id: "minihub".to_string(),
             base_topic: "minihub".to_string(),
             keep_alive_secs: 30,
-            discovery_timeout_secs: 3,
         }
     }
 }
@@ -305,7 +302,6 @@ mod tests {
             client_id = 'my-hub'
             base_topic = 'home'
             keep_alive_secs = 60
-            discovery_timeout_secs = 10
 
             [integrations.ble]
             enabled = true
@@ -325,7 +321,6 @@ mod tests {
         assert_eq!(config.integrations.mqtt.client_id, "my-hub");
         assert_eq!(config.integrations.mqtt.base_topic, "home");
         assert_eq!(config.integrations.mqtt.keep_alive_secs, 60);
-        assert_eq!(config.integrations.mqtt.discovery_timeout_secs, 10);
         assert!(config.integrations.ble.enabled);
         assert_eq!(config.integrations.ble.scan_duration_secs, 5);
         assert_eq!(config.integrations.ble.update_interval_secs, 30);

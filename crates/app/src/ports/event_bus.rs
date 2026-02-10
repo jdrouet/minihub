@@ -10,3 +10,9 @@ pub trait EventPublisher {
     /// Publish an event to all current subscribers.
     fn publish(&self, event: Event) -> impl Future<Output = Result<(), MiniHubError>> + Send;
 }
+
+impl<T: EventPublisher + Send + Sync> EventPublisher for std::sync::Arc<T> {
+    fn publish(&self, event: Event) -> impl Future<Output = Result<(), MiniHubError>> + Send {
+        (**self).publish(event)
+    }
+}

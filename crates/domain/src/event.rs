@@ -47,15 +47,21 @@ impl Event {
     }
 }
 
+impl EventType {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::StateChanged => "state_changed",
+            Self::AttributeChanged => "attribute_changed",
+            Self::EntityCreated => "entity_created",
+            Self::EntityRemoved => "entity_removed",
+            Self::AutomationTriggered => "automation_triggered",
+        }
+    }
+}
+
 impl std::fmt::Display for EventType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::StateChanged => f.write_str("state_changed"),
-            Self::AttributeChanged => f.write_str("attribute_changed"),
-            Self::EntityCreated => f.write_str("entity_created"),
-            Self::EntityRemoved => f.write_str("entity_removed"),
-            Self::AutomationTriggered => f.write_str("automation_triggered"),
-        }
+        f.write_str(self.as_str())
     }
 }
 

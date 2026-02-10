@@ -27,7 +27,6 @@ broker_port = 1883
 client_id = "minihub"
 base_topic = "minihub"
 keep_alive_secs = 30
-discovery_timeout_secs = 3
 
 [integrations.ble]
 enabled = false

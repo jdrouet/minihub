@@ -36,13 +36,14 @@ pub use config::MqttConfig;
 pub use error::MqttError;
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use minihub_app::ports::integration::{DiscoveredDevice, Integration};
+use minihub_app::ports::integration::{DiscoveredDevice, Integration, IntegrationContext};
 use minihub_domain::device::Device;
 use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::error::{MiniHubError, NotFoundError};
@@ -56,10 +57,14 @@ pub struct MqttIntegration {
     config: MqttConfig,
     client: Option<AsyncClient>,
     eventloop_handle: Option<JoinHandle<()>>,
+    /// Incoming publish packets from the event loop, consumed by
+    /// [`start_background`](Integration::start_background).
+    publish_rx: Option<mpsc::Receiver<rumqttc::Publish>>,
+    background_handle: Option<JoinHandle<()>>,
     /// Maps `entity_id` string (e.g. `"light.kitchen"`) to the entity snapshot.
-    entities: HashMap<String, Entity>,
+    entities: Arc<Mutex<HashMap<String, Entity>>>,
     /// Maps entity UUID to the MQTT command topic.
-    command_topics: HashMap<EntityId, String>,
+    command_topics: Arc<Mutex<HashMap<EntityId, String>>>,
 }
 
 impl MqttIntegration {
@@ -70,8 +75,10 @@ impl MqttIntegration {
             config,
             client: None,
             eventloop_handle: None,
-            entities: HashMap::new(),
-            command_topics: HashMap::new(),
+            publish_rx: None,
+            background_handle: None,
+            entities: Arc::new(Mutex::new(HashMap::new())),
+            command_topics: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -138,40 +145,15 @@ impl MqttIntegration {
         Ok(())
     }
 
-    /// Process discovery messages received during setup.
-    ///
-    /// Waits up to `discovery_timeout` for config messages, then returns
-    /// all discovered devices.
-    async fn run_discovery(
-        &mut self,
-        rx: &mut mpsc::Receiver<rumqttc::Publish>,
-    ) -> Result<Vec<DiscoveredDevice>, MqttError> {
-        let timeout_dur = Duration::from_secs(u64::from(self.config.discovery_timeout_secs));
-        let mut discovered = Vec::new();
-
-        loop {
-            match tokio::time::timeout(timeout_dur, rx.recv()).await {
-                Ok(Some(publish)) => {
-                    if let Some(dd) = self.handle_config_message(&publish)? {
-                        discovered.push(dd);
-                    }
-                }
-                Ok(None) => break,
-                Err(_) => {
-                    tracing::debug!("discovery timeout reached");
-                    break;
-                }
-            }
-        }
-
-        Ok(discovered)
-    }
-
     /// Parse a discovery config message into a [`DiscoveredDevice`].
-    fn handle_config_message(
-        &mut self,
+    ///
+    /// This is a pure function so it can be called from the background task
+    /// without borrowing `self`.
+    #[allow(clippy::type_complexity)]
+    fn parse_config_message(
+        config: &MqttConfig,
         publish: &rumqttc::Publish,
-    ) -> Result<Option<DiscoveredDevice>, MqttError> {
+    ) -> Result<Option<(DiscoveredDevice, Vec<(EntityId, String)>)>, MqttError> {
         let topic = &publish.topic;
         if !topic.ends_with("/config") {
             return Ok(None);
@@ -180,7 +162,7 @@ impl MqttIntegration {
         let payload: DiscoveryPayload =
             serde_json::from_slice(&publish.payload).map_err(MqttError::PayloadParse)?;
 
-        let base = &self.config.base_topic;
+        let base = &config.base_topic;
         let device_slug = topic
             .strip_prefix(&format!("{base}/"))
             .and_then(|rest| rest.strip_suffix("/config"))
@@ -196,6 +178,7 @@ impl MqttIntegration {
             .map_err(MqttError::Domain)?;
 
         let mut entities = Vec::new();
+        let mut cmd_topics = Vec::new();
         for ep in &payload.entities {
             let state = parse_state(&ep.state);
             let entity = Entity::builder()
@@ -208,8 +191,7 @@ impl MqttIntegration {
 
             let entity_slug = ep.entity_id.split('.').next_back().unwrap_or(&ep.entity_id);
             let cmd_topic = format!("{base}/{device_slug}/{entity_slug}/set");
-            self.command_topics.insert(entity.id, cmd_topic);
-            self.entities.insert(ep.entity_id.clone(), entity.clone());
+            cmd_topics.push((entity.id, cmd_topic));
             entities.push(entity);
         }
 
@@ -219,7 +201,52 @@ impl MqttIntegration {
             "discovered MQTT device"
         );
 
-        Ok(Some(DiscoveredDevice { device, entities }))
+        Ok(Some((DiscoveredDevice { device, entities }, cmd_topics)))
+    }
+
+    /// Background message loop that processes config (discovery) and state
+    /// messages from the MQTT broker.
+    async fn background_message_loop(
+        config: MqttConfig,
+        mut publish_rx: mpsc::Receiver<rumqttc::Publish>,
+        ctx: impl IntegrationContext,
+        entities: Arc<Mutex<HashMap<String, Entity>>>,
+        command_topics: Arc<Mutex<HashMap<EntityId, String>>>,
+    ) {
+        while let Some(publish) = publish_rx.recv().await {
+            if publish.topic.ends_with("/config") {
+                match Self::parse_config_message(&config, &publish) {
+                    Ok(Some((dd, cmd_topics))) => {
+                        {
+                            let mut ents = entities.lock().unwrap_or_else(PoisonError::into_inner);
+                            for entity in &dd.entities {
+                                ents.insert(entity.entity_id.clone(), entity.clone());
+                            }
+                            let mut cmds = command_topics
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner);
+                            for (id, topic) in cmd_topics {
+                                cmds.insert(id, topic);
+                            }
+                        }
+                        if let Err(err) = ctx.persist_discovered(dd).await {
+                            tracing::warn!(%err, "failed to persist MQTT discovery");
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        tracing::warn!(%err, "failed to parse MQTT config message");
+                    }
+                }
+            } else if publish.topic.ends_with("/state") {
+                tracing::debug!(
+                    topic = %publish.topic,
+                    payload_len = publish.payload.len(),
+                    "received state update"
+                );
+            }
+        }
+        tracing::debug!("MQTT background message loop stopped");
     }
 }
 
@@ -228,26 +255,43 @@ impl Integration for MqttIntegration {
         "mqtt"
     }
 
-    async fn setup(&mut self) -> Result<Vec<DiscoveredDevice>, MiniHubError> {
+    async fn setup(&mut self, _ctx: &impl IntegrationContext) -> Result<(), MiniHubError> {
         let opts = self.mqtt_options();
         let (client, eventloop) = AsyncClient::new(opts, 64);
         self.client = Some(client);
 
-        let (mut rx, handle) = Self::spawn_eventloop(eventloop);
+        let (rx, handle) = Self::spawn_eventloop(eventloop);
         self.eventloop_handle = Some(handle);
+        self.publish_rx = Some(rx);
 
         self.subscribe_topics()
             .await
             .map_err(MqttError::into_domain)?;
 
-        let discovered = self
-            .run_discovery(&mut rx)
-            .await
+        Ok(())
+    }
+
+    async fn start_background(
+        &mut self,
+        ctx: impl IntegrationContext + Clone + 'static,
+    ) -> Result<(), MiniHubError> {
+        let rx = self
+            .publish_rx
+            .take()
+            .ok_or(MqttError::NotConnected)
             .map_err(MqttError::into_domain)?;
 
-        Self::spawn_state_listener(rx);
+        let handle = tokio::spawn(Self::background_message_loop(
+            self.config.clone(),
+            rx,
+            ctx,
+            Arc::clone(&self.entities),
+            Arc::clone(&self.command_topics),
+        ));
+        self.background_handle = Some(handle);
 
-        Ok(discovered)
+        tracing::info!("MQTT background message loop started");
+        Ok(())
     }
 
     async fn handle_service_call(
@@ -257,13 +301,16 @@ impl Integration for MqttIntegration {
         data: serde_json::Value,
     ) -> Result<Entity, MiniHubError> {
         let client = self.client.as_ref().ok_or(MqttError::NotConnected)?;
-        let cmd_topic = self
-            .command_topics
-            .get(&entity_id)
-            .ok_or_else(|| NotFoundError {
+        let cmd_topic = {
+            let cmds = self
+                .command_topics
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            cmds.get(&entity_id).cloned().ok_or_else(|| NotFoundError {
                 entity: "Entity",
                 id: entity_id.to_string(),
-            })?;
+            })?
+        };
 
         let payload = serde_json::json!({
             "service": service,
@@ -271,7 +318,7 @@ impl Integration for MqttIntegration {
         });
         client
             .publish(
-                cmd_topic,
+                &cmd_topic,
                 QoS::AtLeastOnce,
                 false,
                 payload.to_string().into_bytes(),
@@ -286,8 +333,8 @@ impl Integration for MqttIntegration {
             "published MQTT service call"
         );
 
-        let entity = self
-            .entities
+        let ents = self.entities.lock().unwrap_or_else(PoisonError::into_inner);
+        let entity = ents
             .values()
             .find(|ent| ent.id == entity_id)
             .ok_or_else(|| NotFoundError {
@@ -299,6 +346,10 @@ impl Integration for MqttIntegration {
     }
 
     async fn teardown(&mut self) -> Result<(), MiniHubError> {
+        if let Some(handle) = self.background_handle.take() {
+            handle.abort();
+            tracing::debug!("MQTT background task aborted");
+        }
         if let Some(handle) = self.eventloop_handle.take() {
             handle.abort();
             tracing::debug!("MQTT eventloop task aborted");
@@ -306,24 +357,6 @@ impl Integration for MqttIntegration {
         self.client = None;
         tracing::info!("MQTT integration stopped");
         Ok(())
-    }
-}
-
-impl MqttIntegration {
-    /// Spawn a background task that listens for state update messages.
-    fn spawn_state_listener(mut rx: mpsc::Receiver<rumqttc::Publish>) {
-        tokio::spawn(async move {
-            while let Some(publish) = rx.recv().await {
-                if publish.topic.ends_with("/state") {
-                    tracing::debug!(
-                        topic = %publish.topic,
-                        payload_len = publish.payload.len(),
-                        "received state update"
-                    );
-                }
-            }
-            tracing::debug!("state listener stopped");
-        });
     }
 }
 
@@ -400,7 +433,7 @@ mod tests {
         let integration = MqttIntegration::new(config);
         assert_eq!(integration.name(), "mqtt");
         assert!(integration.client.is_none());
-        assert!(integration.entities.is_empty());
+        assert!(integration.entities.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -452,12 +485,11 @@ mod tests {
     }
 
     #[test]
-    fn should_handle_config_message_and_populate_entities() {
+    fn should_parse_config_message_and_return_discovered_device() {
         let config = MqttConfig {
             base_topic: "minihub".to_string(),
             ..MqttConfig::default()
         };
-        let mut integration = MqttIntegration::new(config);
 
         let payload = serde_json::json!({
             "device": {
@@ -480,40 +512,36 @@ mod tests {
             payload.to_string(),
         );
 
-        let result = integration.handle_config_message(&publish).unwrap();
+        let result = MqttIntegration::parse_config_message(&config, &publish).unwrap();
         assert!(result.is_some());
 
-        let dd = result.unwrap();
+        let (dd, cmd_topics) = result.unwrap();
         assert_eq!(dd.device.name, "Kitchen Hub");
         assert_eq!(dd.entities.len(), 1);
         assert_eq!(dd.entities[0].entity_id, "light.kitchen");
         assert_eq!(dd.entities[0].state, EntityState::On);
-
-        assert!(integration.entities.contains_key("light.kitchen"));
-        assert_eq!(integration.command_topics.len(), 1);
+        assert_eq!(cmd_topics.len(), 1);
     }
 
     #[test]
     fn should_skip_non_config_messages() {
-        let mut integration = MqttIntegration::new(MqttConfig::default());
-
+        let config = MqttConfig::default();
         let publish = rumqttc::Publish::new("minihub/device/entity/state", QoS::AtLeastOnce, "on");
 
-        let result = integration.handle_config_message(&publish).unwrap();
+        let result = MqttIntegration::parse_config_message(&config, &publish).unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn should_return_error_for_invalid_discovery_json() {
-        let mut integration = MqttIntegration::new(MqttConfig::default());
-
+        let config = MqttConfig::default();
         let publish = rumqttc::Publish::new(
             "minihub/device/config",
             QoS::AtLeastOnce,
             "not valid json {{",
         );
 
-        let result = integration.handle_config_message(&publish);
+        let result = MqttIntegration::parse_config_message(&config, &publish);
         assert!(result.is_err());
     }
 
@@ -523,7 +551,6 @@ mod tests {
             base_topic: "home".to_string(),
             ..MqttConfig::default()
         };
-        let mut integration = MqttIntegration::new(config);
 
         let payload = serde_json::json!({
             "device": { "name": "Lamp", "manufacturer": "X", "model": "Y" },
@@ -535,18 +562,18 @@ mod tests {
         let publish =
             rumqttc::Publish::new("home/my_lamp/config", QoS::AtLeastOnce, payload.to_string());
 
-        let dd = integration
-            .handle_config_message(&publish)
+        let (dd, cmd_topics) = MqttIntegration::parse_config_message(&config, &publish)
             .unwrap()
             .unwrap();
         let entity_id = dd.entities[0].id;
-        let cmd_topic = integration.command_topics.get(&entity_id).unwrap();
-        assert_eq!(cmd_topic, "home/my_lamp/lamp/set");
+        let (topic_entity_id, topic) = &cmd_topics[0];
+        assert_eq!(*topic_entity_id, entity_id);
+        assert_eq!(topic, "home/my_lamp/lamp/set");
     }
 
     #[test]
     fn should_discover_multiple_entities_per_device() {
-        let mut integration = MqttIntegration::new(MqttConfig::default());
+        let config = MqttConfig::default();
 
         let payload = serde_json::json!({
             "device": { "name": "Multi", "manufacturer": "X", "model": "M" },
@@ -562,13 +589,11 @@ mod tests {
             payload.to_string(),
         );
 
-        let dd = integration
-            .handle_config_message(&publish)
+        let (dd, cmd_topics) = MqttIntegration::parse_config_message(&config, &publish)
             .unwrap()
             .unwrap();
         assert_eq!(dd.entities.len(), 2);
-        assert_eq!(integration.entities.len(), 2);
-        assert_eq!(integration.command_topics.len(), 2);
+        assert_eq!(cmd_topics.len(), 2);
     }
 
     #[tokio::test]
@@ -605,7 +630,7 @@ mod tests {
 
     #[test]
     fn should_set_device_id_on_discovered_entities() {
-        let mut integration = MqttIntegration::new(MqttConfig::default());
+        let config = MqttConfig::default();
 
         let payload = serde_json::json!({
             "device": { "name": "Dev", "manufacturer": "M", "model": "X" },
@@ -618,8 +643,7 @@ mod tests {
         let publish =
             rumqttc::Publish::new("minihub/dev/config", QoS::AtLeastOnce, payload.to_string());
 
-        let dd = integration
-            .handle_config_message(&publish)
+        let (dd, _) = MqttIntegration::parse_config_message(&config, &publish)
             .unwrap()
             .unwrap();
         let device_id = dd.device.id;
@@ -630,7 +654,7 @@ mod tests {
 
     #[test]
     fn should_handle_entity_id_without_dot_in_slug() {
-        let mut integration = MqttIntegration::new(MqttConfig::default());
+        let config = MqttConfig::default();
 
         let payload = serde_json::json!({
             "device": { "name": "Dev" },
@@ -642,13 +666,13 @@ mod tests {
         let publish =
             rumqttc::Publish::new("minihub/dev/config", QoS::AtLeastOnce, payload.to_string());
 
-        let dd = integration
-            .handle_config_message(&publish)
+        let (dd, cmd_topics) = MqttIntegration::parse_config_message(&config, &publish)
             .unwrap()
             .unwrap();
         let entity_id = dd.entities[0].id;
-        let cmd_topic = integration.command_topics.get(&entity_id).unwrap();
-        assert_eq!(cmd_topic, "minihub/dev/nodot/set");
+        let (topic_entity_id, topic) = &cmd_topics[0];
+        assert_eq!(*topic_entity_id, entity_id);
+        assert_eq!(topic, "minihub/dev/nodot/set");
     }
 
     #[test]
@@ -673,7 +697,7 @@ mod tests {
     #[tokio::test]
     async fn should_return_error_when_service_call_without_client() {
         let config = MqttConfig::default();
-        let mut integration = MqttIntegration::new(config);
+        let integration = MqttIntegration::new(config.clone());
 
         let payload = serde_json::json!({
             "device": { "name": "Dev", "manufacturer": "M", "model": "X" },
@@ -683,11 +707,17 @@ mod tests {
         });
         let publish =
             rumqttc::Publish::new("minihub/dev/config", QoS::AtLeastOnce, payload.to_string());
-        let dd = integration
-            .handle_config_message(&publish)
+        let (dd, cmd_topics) = MqttIntegration::parse_config_message(&config, &publish)
             .unwrap()
             .unwrap();
         let entity_id = dd.entities[0].id;
+
+        {
+            let mut cmds = integration.command_topics.lock().unwrap();
+            for (id, topic) in cmd_topics {
+                cmds.insert(id, topic);
+            }
+        }
 
         let result = integration
             .handle_service_call(entity_id, "turn_on", serde_json::json!({}))

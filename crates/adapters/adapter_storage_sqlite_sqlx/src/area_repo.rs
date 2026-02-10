@@ -1,6 +1,5 @@
 //! `SQLite` implementation of [`AreaRepository`].
 
-use std::future::Future;
 use std::str::FromStr;
 
 use sqlx::sqlite::SqliteRow;
@@ -62,75 +61,57 @@ impl SqliteAreaRepository {
 }
 
 impl AreaRepository for SqliteAreaRepository {
-    fn create(&self, area: Area) -> impl Future<Output = Result<Area, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query(INSERT)
-                .bind(area.id.to_string())
-                .bind(&area.name)
-                .bind(area.parent_id.map(|id| id.to_string()))
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn create(&self, area: Area) -> Result<Area, MiniHubError> {
+        sqlx::query(INSERT)
+            .bind(area.id.as_uuid())
+            .bind(&area.name)
+            .bind(area.parent_id.map(|id| id.as_uuid()))
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(area)
-        }
+        Ok(area)
     }
 
-    fn get_by_id(
-        &self,
-        id: AreaId,
-    ) -> impl Future<Output = Result<Option<Area>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
-                .bind(id.to_string())
-                .fetch_optional(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_by_id(&self, id: AreaId) -> Result<Option<Area>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
+            .bind(id.as_uuid())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(Wrapper::maybe(row))
-        }
+        Ok(Wrapper::maybe(row))
     }
 
-    fn get_all(&self) -> impl Future<Output = Result<Vec<Area>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let rows: Vec<Wrapper> = sqlx::query_as(SELECT_ALL)
-                .fetch_all(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_all(&self) -> Result<Vec<Area>, MiniHubError> {
+        let rows: Vec<Wrapper> = sqlx::query_as(SELECT_ALL)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
+        Ok(rows.into_iter().map(|w| w.0).collect())
     }
 
-    fn update(&self, area: Area) -> impl Future<Output = Result<Area, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query(UPDATE)
-                .bind(&area.name)
-                .bind(area.parent_id.map(|id| id.to_string()))
-                .bind(area.id.to_string())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn update(&self, area: Area) -> Result<Area, MiniHubError> {
+        sqlx::query(UPDATE)
+            .bind(&area.name)
+            .bind(area.parent_id.map(|id| id.as_uuid()))
+            .bind(area.id.as_uuid())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(area)
-        }
+        Ok(area)
     }
 
-    fn delete(&self, id: AreaId) -> impl Future<Output = Result<(), MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query(DELETE_BY_ID)
-                .bind(id.to_string())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn delete(&self, id: AreaId) -> Result<(), MiniHubError> {
+        sqlx::query(DELETE_BY_ID)
+            .bind(id.as_uuid())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(())
-        }
+        Ok(())
     }
 }
 

@@ -1,7 +1,6 @@
 //! `SQLite` implementation of [`EntityRepository`].
 
 use std::collections::HashMap;
-use std::future::Future;
 use std::str::FromStr;
 
 use sqlx::sqlite::SqliteRow;
@@ -95,71 +94,53 @@ impl SqliteEntityRepository {
 }
 
 impl EntityRepository for SqliteEntityRepository {
-    fn create(&self, entity: Entity) -> impl Future<Output = Result<Entity, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let attributes_json =
-                serde_json::to_string(&entity.attributes).map_err(StorageError::from)?;
+    async fn create(&self, entity: Entity) -> Result<Entity, MiniHubError> {
+        let attributes_json =
+            serde_json::to_string(&entity.attributes).map_err(StorageError::from)?;
 
-            sqlx::query(INSERT)
-                .bind(entity.id.to_string())
-                .bind(entity.device_id.to_string())
-                .bind(&entity.entity_id)
-                .bind(&entity.friendly_name)
-                .bind(entity.state.to_string())
-                .bind(&attributes_json)
-                .bind(entity.last_changed.to_rfc3339())
-                .bind(entity.last_updated.to_rfc3339())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+        sqlx::query(INSERT)
+            .bind(entity.id.as_uuid())
+            .bind(entity.device_id.as_uuid())
+            .bind(&entity.entity_id)
+            .bind(&entity.friendly_name)
+            .bind(entity.state.to_string())
+            .bind(&attributes_json)
+            .bind(entity.last_changed.to_rfc3339())
+            .bind(entity.last_updated.to_rfc3339())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(entity)
-        }
+        Ok(entity)
     }
 
-    fn get_by_id(
-        &self,
-        id: EntityId,
-    ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
-                .bind(id.to_string())
-                .fetch_optional(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_by_id(&self, id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+        let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(Wrapper::maybe(row))
-        }
+        Ok(Wrapper::maybe(row))
     }
 
-    fn get_all(&self) -> impl Future<Output = Result<Vec<Entity>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let rows: Vec<Wrapper> = sqlx::query_as(SELECT_ALL)
-                .fetch_all(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn get_all(&self) -> Result<Vec<Entity>, MiniHubError> {
+        let rows: Vec<Wrapper> = sqlx::query_as(SELECT_ALL)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
+        Ok(rows.into_iter().map(|w| w.0).collect())
     }
 
-    fn find_by_device_id(
-        &self,
-        device_id: DeviceId,
-    ) -> impl Future<Output = Result<Vec<Entity>, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let rows: Vec<Wrapper> = sqlx::query_as(SELECT_BY_DEVICE)
-                .bind(device_id.to_string())
-                .fetch_all(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn find_by_device_id(&self, device_id: DeviceId) -> Result<Vec<Entity>, MiniHubError> {
+        let rows: Vec<Wrapper> = sqlx::query_as(SELECT_BY_DEVICE)
+            .bind(device_id.as_uuid())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(rows.into_iter().map(|w| w.0).collect())
-        }
+        Ok(rows.into_iter().map(|w| w.0).collect())
     }
 
     async fn find_by_entity_id(&self, entity_id: &str) -> Result<Option<Entity>, MiniHubError> {
@@ -172,40 +153,34 @@ impl EntityRepository for SqliteEntityRepository {
         Ok(Wrapper::maybe(row))
     }
 
-    fn update(&self, entity: Entity) -> impl Future<Output = Result<Entity, MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            let attributes_json =
-                serde_json::to_string(&entity.attributes).map_err(StorageError::from)?;
+    async fn update(&self, entity: Entity) -> Result<Entity, MiniHubError> {
+        let attributes_json =
+            serde_json::to_string(&entity.attributes).map_err(StorageError::from)?;
 
-            sqlx::query(UPDATE)
-                .bind(entity.device_id.to_string())
-                .bind(&entity.entity_id)
-                .bind(&entity.friendly_name)
-                .bind(entity.state.to_string())
-                .bind(&attributes_json)
-                .bind(entity.last_changed.to_rfc3339())
-                .bind(entity.last_updated.to_rfc3339())
-                .bind(entity.id.to_string())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+        sqlx::query(UPDATE)
+            .bind(entity.device_id.as_uuid())
+            .bind(&entity.entity_id)
+            .bind(&entity.friendly_name)
+            .bind(entity.state.to_string())
+            .bind(&attributes_json)
+            .bind(entity.last_changed.to_rfc3339())
+            .bind(entity.last_updated.to_rfc3339())
+            .bind(entity.id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(entity)
-        }
+        Ok(entity)
     }
 
-    fn delete(&self, id: EntityId) -> impl Future<Output = Result<(), MiniHubError>> + Send {
-        let pool = self.pool.clone();
-        async move {
-            sqlx::query(DELETE_BY_ID)
-                .bind(id.to_string())
-                .execute(&pool)
-                .await
-                .map_err(StorageError::from)?;
+    async fn delete(&self, id: EntityId) -> Result<(), MiniHubError> {
+        sqlx::query(DELETE_BY_ID)
+            .bind(id.as_uuid())
+            .execute(&self.pool)
+            .await
+            .map_err(StorageError::from)?;
 
-            Ok(())
-        }
+        Ok(())
     }
 }
 
