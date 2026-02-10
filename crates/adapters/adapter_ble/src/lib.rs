@@ -32,37 +32,33 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use btleplug::api::BDAddr;
-use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use minihub_app::ports::integration::{DiscoveredDevice, Integration};
+use minihub_app::ports::integration::{Integration, IntegrationContext};
 use minihub_domain::entity::Entity;
 use minihub_domain::error::{MiniHubError, NotFoundError};
 use minihub_domain::id::EntityId;
 
+use crate::scanner::BleScanner;
+
 /// Passive BLE integration that scans for BLE sensor advertisements.
+///
+/// Holds a handle to a background [`BleScanner`] that persists each
+/// advertisement in real time via the [`IntegrationContext`].
 pub struct BleIntegration {
     config: BleConfig,
     scan_handle: Option<JoinHandle<()>>,
-    /// Optional channel for sending newly discovered devices to a receiver
-    /// task that persists them.
-    discovery_tx: Option<mpsc::Sender<DiscoveredDevice>>,
     /// Maps BLE MAC address to the most recent entity snapshot.
     entities: HashMap<BDAddr, Entity>,
 }
 
 impl BleIntegration {
     /// Create a new BLE integration with the given configuration.
-    ///
-    /// If `discovery_tx` is `Some`, a background scan loop will be spawned
-    /// after the initial scan, sending newly discovered or updated devices
-    /// through the channel.
     #[must_use]
-    pub fn new(config: BleConfig, discovery_tx: Option<mpsc::Sender<DiscoveredDevice>>) -> Self {
+    pub fn new(config: BleConfig) -> Self {
         Self {
             config,
             scan_handle: None,
-            discovery_tx,
             entities: HashMap::new(),
         }
     }
@@ -73,47 +69,28 @@ impl Integration for BleIntegration {
         "ble"
     }
 
-    async fn setup(&mut self) -> Result<Vec<DiscoveredDevice>, MiniHubError> {
-        let duration = Duration::from_secs(u64::from(self.config.scan_duration_secs));
+    async fn setup(&mut self, _ctx: &impl IntegrationContext) -> Result<(), MiniHubError> {
+        tracing::info!("BLE integration initialised");
+        Ok(())
+    }
+
+    async fn start_background(
+        &mut self,
+        ctx: impl IntegrationContext + Clone + 'static,
+    ) -> Result<(), MiniHubError> {
+        let scan_duration = Duration::from_secs(u64::from(self.config.scan_duration_secs));
+        let interval = Duration::from_secs(u64::from(self.config.update_interval_secs));
+        let device_filter = self.config.device_filter.clone();
+
+        let mut scanner = BleScanner::new(ctx, scan_duration, interval, device_filter);
+        let handle = scanner.start();
+        self.scan_handle = Some(handle);
 
         tracing::info!(
-            duration_secs = self.config.scan_duration_secs,
-            "BLE scan started"
+            interval_secs = self.config.update_interval_secs,
+            "BLE background scan loop started"
         );
-
-        let discovered = scanner::run_scan(duration, &self.config.device_filter).await?;
-
-        tracing::info!(count = discovered.len(), "BLE discovery complete");
-
-        // Store entity snapshots for handle_service_call lookups.
-        for dd in discovered.values() {
-            for entity in &dd.entities {
-                // Use a zero BDAddr as key — we only need entity lookup by id.
-                self.entities.insert(BDAddr::default(), entity.clone());
-            }
-        }
-
-        // Spawn background scan loop if a discovery channel was provided.
-        if let Some(tx) = self.discovery_tx.take() {
-            let scan_duration = duration;
-            let interval = Duration::from_secs(u64::from(self.config.update_interval_secs));
-            let device_filter = self.config.device_filter.clone();
-
-            let handle = tokio::spawn(scanner::background_scan_loop(
-                scan_duration,
-                interval,
-                device_filter,
-                tx,
-            ));
-            self.scan_handle = Some(handle);
-
-            tracing::info!(
-                interval_secs = self.config.update_interval_secs,
-                "BLE background scan loop started"
-            );
-        }
-
-        Ok(discovered.into_values().collect())
+        Ok(())
     }
 
     async fn handle_service_call(
@@ -150,13 +127,40 @@ mod tests {
     use super::*;
     use minihub_domain::entity::{AttributeValue, EntityState};
 
+    struct NoOpContext;
+
+    impl IntegrationContext for NoOpContext {
+        async fn upsert_device(
+            &self,
+            device: minihub_domain::device::Device,
+        ) -> Result<minihub_domain::device::Device, MiniHubError> {
+            Ok(device)
+        }
+
+        async fn upsert_entity(&self, entity: Entity) -> Result<Entity, MiniHubError> {
+            Ok(entity)
+        }
+
+        async fn publish(&self, _event: minihub_domain::event::Event) -> Result<(), MiniHubError> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn should_create_integration_with_config() {
         let config = BleConfig::default();
-        let integration = BleIntegration::new(config, None);
+        let integration = BleIntegration::new(config);
         assert_eq!(integration.name(), "ble");
         assert!(integration.entities.is_empty());
         assert!(integration.scan_handle.is_none());
+    }
+
+    #[tokio::test]
+    async fn should_return_ok_on_setup() {
+        let mut integration = BleIntegration::new(BleConfig::default());
+        let ctx = NoOpContext;
+        let result = integration.setup(&ctx).await;
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -199,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_return_not_found_for_unknown_entity() {
-        let integration = BleIntegration::new(BleConfig::default(), None);
+        let integration = BleIntegration::new(BleConfig::default());
         let result = integration
             .handle_service_call(EntityId::new(), "read", serde_json::json!({}))
             .await;
@@ -208,24 +212,15 @@ mod tests {
 
     #[tokio::test]
     async fn should_teardown_without_error_when_not_scanning() {
-        let mut integration = BleIntegration::new(BleConfig::default(), None);
+        let mut integration = BleIntegration::new(BleConfig::default());
         let result = integration.teardown().await;
         assert!(result.is_ok());
         assert!(integration.entities.is_empty());
     }
 
     #[tokio::test]
-    async fn should_store_discovery_tx_when_provided() {
-        let (tx, _rx) = mpsc::channel(1);
-        let integration = BleIntegration::new(BleConfig::default(), Some(tx));
-        assert!(integration.discovery_tx.is_some());
-    }
-
-    #[tokio::test]
     async fn should_teardown_abort_background_task() {
-        let (tx, _rx) = mpsc::channel(1);
-        let mut integration = BleIntegration::new(BleConfig::default(), Some(tx));
-        // Simulate a background task by spawning a long-running one.
+        let mut integration = BleIntegration::new(BleConfig::default());
         integration.scan_handle = Some(tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(3600)).await;
         }));
