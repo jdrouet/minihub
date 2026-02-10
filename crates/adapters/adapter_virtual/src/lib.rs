@@ -19,7 +19,7 @@ mod devices;
 
 use std::collections::HashMap;
 
-use minihub_app::ports::integration::{DiscoveredDevice, Integration};
+use minihub_app::ports::integration::{DiscoveredDevice, Integration, IntegrationContext};
 use minihub_domain::entity::Entity;
 use minihub_domain::error::{MiniHubError, NotFoundError};
 use minihub_domain::id::EntityId;
@@ -51,18 +51,16 @@ impl Integration for VirtualIntegration {
         "virtual"
     }
 
-    async fn setup(&mut self) -> Result<Vec<DiscoveredDevice>, MiniHubError> {
-        let mut discovered = Vec::new();
-
+    async fn setup(&mut self, ctx: &impl IntegrationContext) -> Result<(), MiniHubError> {
         for vdev in self.devices.values() {
             let (device, entity) = vdev.discover()?;
-            discovered.push(DiscoveredDevice {
+            let dd = DiscoveredDevice {
                 device,
                 entities: vec![entity],
-            });
+            };
+            ctx.persist_discovered(dd).await?;
         }
-
-        Ok(discovered)
+        Ok(())
     }
 
     async fn handle_service_call(
@@ -95,13 +93,54 @@ impl VirtualIntegration {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minihub_domain::entity::{AttributeValue, EntityState};
+    use minihub_domain::device::Device;
+    use minihub_domain::entity::EntityState;
+    use std::future::Future;
+    use std::sync::Mutex;
+
+    struct InMemoryContext {
+        devices: Mutex<Vec<Device>>,
+        entities: Mutex<Vec<Entity>>,
+    }
+
+    impl InMemoryContext {
+        fn new() -> Self {
+            Self {
+                devices: Mutex::new(Vec::new()),
+                entities: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl IntegrationContext for InMemoryContext {
+        fn upsert_device(
+            &self,
+            device: Device,
+        ) -> impl Future<Output = Result<Device, MiniHubError>> + Send {
+            self.devices.lock().unwrap().push(device.clone());
+            async { Ok(device) }
+        }
+
+        fn upsert_entity(
+            &self,
+            entity: Entity,
+        ) -> impl Future<Output = Result<Entity, MiniHubError>> + Send {
+            self.entities.lock().unwrap().push(entity.clone());
+            async { Ok(entity) }
+        }
+
+        async fn publish(&self, _event: minihub_domain::event::Event) -> Result<(), MiniHubError> {
+            Ok(())
+        }
+    }
 
     #[tokio::test]
     async fn should_discover_three_devices_on_setup() {
         let mut integration = VirtualIntegration::default();
-        let discovered = integration.setup().await.unwrap();
-        assert_eq!(discovered.len(), 3);
+        let ctx = InMemoryContext::new();
+        integration.setup(&ctx).await.unwrap();
+        assert_eq!(ctx.devices.lock().unwrap().len(), 3);
+        assert_eq!(ctx.entities.lock().unwrap().len(), 3);
     }
 
     #[tokio::test]
@@ -113,54 +152,58 @@ mod tests {
     #[tokio::test]
     async fn should_discover_light_device() {
         let mut integration = VirtualIntegration::default();
-        let discovered = integration.setup().await.unwrap();
+        let ctx = InMemoryContext::new();
+        integration.setup(&ctx).await.unwrap();
 
-        let light = discovered.iter().find(|d| d.device.name == "Virtual Light");
+        let devices = ctx.devices.lock().unwrap();
+        let light = devices.iter().find(|d| d.name == "Virtual Light");
         assert!(light.is_some());
 
-        let light = light.unwrap();
-        assert_eq!(light.entities.len(), 1);
-        assert_eq!(light.entities[0].entity_id, "light.virtual_light");
-        assert_eq!(light.entities[0].state, EntityState::Off);
+        let entities = ctx.entities.lock().unwrap();
+        let light_entity = entities
+            .iter()
+            .find(|e| e.entity_id == "light.virtual_light");
+        assert!(light_entity.is_some());
+        assert_eq!(light_entity.unwrap().state, EntityState::Off);
     }
 
     #[tokio::test]
     async fn should_discover_sensor_device() {
         let mut integration = VirtualIntegration::default();
-        let discovered = integration.setup().await.unwrap();
+        let ctx = InMemoryContext::new();
+        integration.setup(&ctx).await.unwrap();
 
-        let sensor = discovered
+        let entities = ctx.entities.lock().unwrap();
+        let sensor = entities
             .iter()
-            .find(|d| d.device.name == "Virtual Sensor");
+            .find(|e| e.entity_id == "sensor.virtual_temperature");
         assert!(sensor.is_some());
 
         let sensor = sensor.unwrap();
-        assert_eq!(sensor.entities.len(), 1);
-        assert_eq!(sensor.entities[0].entity_id, "sensor.virtual_temperature");
         assert_eq!(
-            sensor.entities[0].get_attribute("temperature"),
-            Some(&AttributeValue::Float(21.5))
+            sensor.get_attribute("temperature"),
+            Some(&minihub_domain::entity::AttributeValue::Float(21.5))
         );
         assert_eq!(
-            sensor.entities[0].get_attribute("unit"),
-            Some(&AttributeValue::String("\u{b0}C".to_string()))
+            sensor.get_attribute("unit"),
+            Some(&minihub_domain::entity::AttributeValue::String(
+                "\u{b0}C".to_string()
+            ))
         );
     }
 
     #[tokio::test]
     async fn should_discover_switch_device() {
         let mut integration = VirtualIntegration::default();
-        let discovered = integration.setup().await.unwrap();
+        let ctx = InMemoryContext::new();
+        integration.setup(&ctx).await.unwrap();
 
-        let switch = discovered
+        let entities = ctx.entities.lock().unwrap();
+        let switch = entities
             .iter()
-            .find(|d| d.device.name == "Virtual Switch");
+            .find(|e| e.entity_id == "switch.virtual_switch");
         assert!(switch.is_some());
-
-        let switch = switch.unwrap();
-        assert_eq!(switch.entities.len(), 1);
-        assert_eq!(switch.entities[0].entity_id, "switch.virtual_switch");
-        assert_eq!(switch.entities[0].state, EntityState::Off);
+        assert_eq!(switch.unwrap().state, EntityState::Off);
     }
 
     #[tokio::test]
@@ -210,13 +253,10 @@ mod tests {
 
     #[tokio::test]
     async fn should_own_discovered_entities() {
-        let mut integration = VirtualIntegration::default();
-        let discovered = integration.setup().await.unwrap();
-
-        for dd in &discovered {
-            for entity in &dd.entities {
-                assert!(integration.owns_entity(entity.id));
-            }
+        let integration = VirtualIntegration::default();
+        for vdev in integration.devices.values() {
+            let (_, entity) = vdev.discover().unwrap();
+            assert!(integration.owns_entity(entity.id));
         }
     }
 
