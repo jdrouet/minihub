@@ -10,6 +10,7 @@ use minihub_app::ports::{
 };
 use minihub_domain::device::Device;
 
+use super::DashboardError;
 use crate::state::AppState;
 
 /// Device list page template.
@@ -29,7 +30,7 @@ impl IntoResponse for DeviceListTemplate {
 /// `GET /devices` — list all devices.
 pub async fn list<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
-) -> DeviceListTemplate
+) -> Result<DeviceListTemplate, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -38,14 +39,10 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let devices = state
-        .device_service
-        .list_devices()
-        .await
-        .unwrap_or_default();
+    let devices = state.device_service.list_devices().await?;
 
-    DeviceListTemplate {
+    Ok(DeviceListTemplate {
         refresh_seconds: 10,
         devices,
-    }
+    })
 }

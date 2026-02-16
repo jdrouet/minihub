@@ -1,7 +1,5 @@
 //! `SQLite` implementation of [`AreaRepository`].
 
-use std::str::FromStr;
-
 use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Row, SqlitePool};
 
@@ -23,15 +21,12 @@ impl Wrapper {
 
 impl<'r> FromRow<'r, SqliteRow> for Wrapper {
     fn from_row(row: &'r SqliteRow) -> Result<Self, sqlx::Error> {
-        let id: String = row.try_get("id")?;
+        let id: uuid::Uuid = row.try_get("id")?;
         let name: String = row.try_get("name")?;
-        let parent_id: Option<String> = row.try_get("parent_id")?;
+        let parent_id: Option<uuid::Uuid> = row.try_get("parent_id")?;
 
-        let id = AreaId::from_str(&id).map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
-        let parent_id = parent_id
-            .map(|s| AreaId::from_str(&s))
-            .transpose()
-            .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+        let id = AreaId::from_uuid(id);
+        let parent_id = parent_id.map(AreaId::from_uuid);
 
         Ok(Self(Area {
             id,
@@ -65,7 +60,7 @@ impl AreaRepository for SqliteAreaRepository {
         sqlx::query(INSERT)
             .bind(area.id.as_uuid())
             .bind(&area.name)
-            .bind(area.parent_id.map(|id| id.as_uuid()))
+            .bind(area.parent_id.map(AreaId::as_uuid))
             .execute(&self.pool)
             .await
             .map_err(StorageError::from)?;
@@ -95,7 +90,7 @@ impl AreaRepository for SqliteAreaRepository {
     async fn update(&self, area: Area) -> Result<Area, MiniHubError> {
         sqlx::query(UPDATE)
             .bind(&area.name)
-            .bind(area.parent_id.map(|id| id.as_uuid()))
+            .bind(area.parent_id.map(AreaId::as_uuid))
             .bind(area.id.as_uuid())
             .execute(&self.pool)
             .await

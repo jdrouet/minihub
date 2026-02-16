@@ -14,7 +14,7 @@ use minihub_app::ports::{
 use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::id::EntityId;
 
-use crate::error::ApiError;
+use super::DashboardError;
 use crate::state::AppState;
 
 /// Entity list page template.
@@ -62,7 +62,7 @@ impl IntoResponse for UpdateStateResponse {
 /// `GET /entities` — list all entities.
 pub async fn list<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
-) -> EntityListTemplate
+) -> Result<EntityListTemplate, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -71,23 +71,19 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let entities = state
-        .entity_service
-        .list_entities()
-        .await
-        .unwrap_or_default();
+    let entities = state.entity_service.list_entities().await?;
 
-    EntityListTemplate {
+    Ok(EntityListTemplate {
         refresh_seconds: 5,
         entities,
-    }
+    })
 }
 
 /// `GET /entities/:id` — entity detail + control form.
 pub async fn detail<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
-) -> Result<EntityDetailTemplate, ApiError>
+) -> Result<EntityDetailTemplate, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -97,7 +93,7 @@ where
     AUR: AutomationRepository + Send + Sync + 'static,
 {
     let entity_id = EntityId::from_str(&id).map_err(|_| {
-        ApiError::from(minihub_domain::error::MiniHubError::Validation(
+        DashboardError::from(minihub_domain::error::MiniHubError::Validation(
             minihub_domain::error::ValidationError::EmptyEntityId,
         ))
     })?;
@@ -120,7 +116,7 @@ pub async fn update_state<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
     Form(form): Form<StateForm>,
-) -> Result<UpdateStateResponse, ApiError>
+) -> Result<UpdateStateResponse, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -130,7 +126,7 @@ where
     AUR: AutomationRepository + Send + Sync + 'static,
 {
     let entity_id = EntityId::from_str(&id).map_err(|_| {
-        ApiError::from(minihub_domain::error::MiniHubError::Validation(
+        DashboardError::from(minihub_domain::error::MiniHubError::Validation(
             minihub_domain::error::ValidationError::EmptyEntityId,
         ))
     })?;

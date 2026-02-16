@@ -39,6 +39,7 @@ use tracing_subscriber::EnvFilter;
 use crate::config::Config;
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configuration
     let config = Config::load()?;
@@ -79,9 +80,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Event worker — persists events from the bus to the store
     let es = Arc::clone(&event_store);
     tokio::spawn(async move {
-        while let Ok(event) = event_rx.recv().await {
-            if let Err(err) = es.store(event).await {
-                tracing::warn!(%err, "failed to persist event");
+        loop {
+            match event_rx.recv().await {
+                Ok(event) => {
+                    if let Err(err) = es.store(event).await {
+                        tracing::warn!(%err, "failed to persist event");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(
+                        skipped = n,
+                        "event store subscriber lagged, some events were dropped"
+                    );
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
         }
         tracing::debug!("event store subscriber stopped");

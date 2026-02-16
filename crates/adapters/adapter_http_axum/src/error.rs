@@ -28,7 +28,7 @@ impl IntoResponse for ApiError {
             MiniHubError::Validation(err) => (StatusCode::BAD_REQUEST, err.to_string()),
             MiniHubError::NotFound(err) => (StatusCode::NOT_FOUND, err.to_string()),
             MiniHubError::Storage(err) => {
-                tracing::error!(error = %err, "storage error");
+                tracing::error!(error = ?err, "storage error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal server error".to_string(),

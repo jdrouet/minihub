@@ -1,7 +1,6 @@
 //! `SQLite` implementation of [`EntityRepository`].
 
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Row, SqlitePool};
@@ -25,8 +24,8 @@ impl Wrapper {
 
 impl<'r> FromRow<'r, SqliteRow> for Wrapper {
     fn from_row(row: &'r SqliteRow) -> Result<Self, sqlx::Error> {
-        let id: String = row.try_get("id")?;
-        let device_id: String = row.try_get("device_id")?;
+        let id: uuid::Uuid = row.try_get("id")?;
+        let device_id: uuid::Uuid = row.try_get("device_id")?;
         let entity_id: String = row.try_get("entity_id")?;
         let friendly_name: String = row.try_get("friendly_name")?;
         let state_str: String = row.try_get("state")?;
@@ -34,9 +33,8 @@ impl<'r> FromRow<'r, SqliteRow> for Wrapper {
         let last_changed_str: String = row.try_get("last_changed")?;
         let last_updated_str: String = row.try_get("last_updated")?;
 
-        let id = EntityId::from_str(&id).map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
-        let device_id =
-            DeviceId::from_str(&device_id).map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+        let id = EntityId::from_uuid(id);
+        let device_id = DeviceId::from_uuid(device_id);
         let state: EntityState = serde_json::from_str(&format!("\"{state_str}\""))
             .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
         let attributes: HashMap<String, AttributeValue> = serde_json::from_str(&attributes_json)
@@ -116,7 +114,7 @@ impl EntityRepository for SqliteEntityRepository {
 
     async fn get_by_id(&self, id: EntityId) -> Result<Option<Entity>, MiniHubError> {
         let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
-            .bind(id.to_string())
+            .bind(id.as_uuid())
             .fetch_optional(&self.pool)
             .await
             .map_err(StorageError::from)?;
@@ -165,7 +163,7 @@ impl EntityRepository for SqliteEntityRepository {
             .bind(&attributes_json)
             .bind(entity.last_changed.to_rfc3339())
             .bind(entity.last_updated.to_rfc3339())
-            .bind(entity.id.to_string())
+            .bind(entity.id.as_uuid())
             .execute(&self.pool)
             .await
             .map_err(StorageError::from)?;
@@ -202,7 +200,7 @@ mod tests {
         let device_id = DeviceId::new();
 
         sqlx::query("INSERT INTO devices (id, name) VALUES (?, ?)")
-            .bind(device_id.to_string())
+            .bind(device_id.as_uuid())
             .bind("Test Device")
             .execute(&pool)
             .await

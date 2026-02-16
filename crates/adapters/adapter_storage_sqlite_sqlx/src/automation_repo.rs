@@ -1,7 +1,5 @@
 //! `SQLite` implementation of [`AutomationRepository`].
 
-use std::str::FromStr;
-
 use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Row, SqlitePool};
 
@@ -22,7 +20,7 @@ impl Wrapper {
 
 impl<'r> FromRow<'r, SqliteRow> for Wrapper {
     fn from_row(row: &'r SqliteRow) -> Result<Self, sqlx::Error> {
-        let id: String = row.try_get("id")?;
+        let id: uuid::Uuid = row.try_get("id")?;
         let name: String = row.try_get("name")?;
         let enabled: bool = row.try_get("enabled")?;
         let trigger_json: String = row.try_get("trigger_data")?;
@@ -30,7 +28,7 @@ impl<'r> FromRow<'r, SqliteRow> for Wrapper {
         let actions_json: String = row.try_get("actions")?;
         let last_triggered_str: Option<String> = row.try_get("last_triggered")?;
 
-        let id = AutomationId::from_str(&id).map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+        let id = AutomationId::from_uuid(id);
         let trigger: Trigger = serde_json::from_str(&trigger_json)
             .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
         let conditions: Vec<Condition> = serde_json::from_str(&conditions_json)
@@ -84,7 +82,7 @@ impl AutomationRepository for SqliteAutomationRepository {
         sqlx::query(
                 "INSERT INTO automations (id, name, enabled, trigger_data, conditions, actions, last_triggered) VALUES (?, ?, ?, ?, ?, ?, ?)",
             )
-            .bind(&id)
+            .bind(id)
             .bind(&automation.name)
             .bind(automation.enabled)
             .bind(&trigger_json)
@@ -143,7 +141,7 @@ impl AutomationRepository for SqliteAutomationRepository {
             .bind(&conditions_json)
             .bind(&actions_json)
             .bind(&last_triggered)
-            .bind(&id)
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(StorageError::from)?;
