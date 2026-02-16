@@ -18,7 +18,7 @@ use minihub_domain::error::MiniHubError;
 use minihub_domain::event::{Event, EventType};
 
 use crate::error::BleError;
-use crate::parser::{self, SensorReading};
+use crate::parser::{self, SensorReading, ServiceUuid};
 
 /// Build a [`DiscoveredDevice`] from a [`SensorReading`].
 pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevice, MiniHubError> {
@@ -121,7 +121,11 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
 
         let mut events = central.events().await?;
 
-        central.start_scan(ScanFilter::default()).await?;
+        central
+            .start_scan(ScanFilter {
+                services: ServiceUuid::all(),
+            })
+            .await?;
 
         let deadline = tokio::time::Instant::now() + self.scan_duration;
 
@@ -153,7 +157,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                         }
                     }
                 }
-                Ok(Some(CentralEvent::DeviceDiscovered(id) | CentralEvent::DeviceUpdated(id))) => {
+                Ok(Some(CentralEvent::DeviceDiscovered(id))) => {
                     if let Ok(peripheral) = central.peripheral(&id).await {
                         if let Ok(Some(props)) = peripheral.properties().await {
                             let mac = props.address.to_string();

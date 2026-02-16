@@ -9,9 +9,35 @@
 
 use crate::error::{BleError, PayloadParseError};
 
-/// UUID used by both PVVX and ATC1441 advertisement formats.
-pub const SERVICE_UUID_181A: uuid::Uuid =
-    uuid::Uuid::from_u128(0x0000_181A_0000_1000_8000_0080_5F9B_34FB);
+/// Supported BLE service UUIDs used by this adapter.
+pub struct ServiceUuid;
+
+impl ServiceUuid {
+    /// UUID used by both PVVX and ATC1441 advertisement formats (`0x181A`).
+    pub const ATC1441: uuid::Uuid =
+        uuid::Uuid::from_u128(0x0000_181A_0000_1000_8000_0080_5F9B_34FB);
+
+    /// Google Fast Pair service UUID (`0xFE2C`).
+    pub const GOOGLE_FAST_PAIR: uuid::Uuid =
+        uuid::Uuid::from_u128(0x0000_FE2C_0000_1000_8000_0080_5F9B_34FB);
+
+    /// Apple Continuity service UUID (`0xFEA0`), commonly advertised by iPhone/Apple Watch.
+    pub const APPLE_CONTINUITY: uuid::Uuid =
+        uuid::Uuid::from_u128(0x0000_FEA0_0000_1000_8000_0080_5F9B_34FB);
+
+    /// All service UUIDs used for BLE scanning filters.
+    #[must_use]
+    pub fn all() -> Vec<uuid::Uuid> {
+        vec![
+            Self::ATC1441,
+            Self::GOOGLE_FAST_PAIR,
+            Self::APPLE_CONTINUITY,
+        ]
+    }
+}
+
+/// Backwards-compatible alias for existing usages/tests.
+pub const SERVICE_UUID_181A: uuid::Uuid = ServiceUuid::ATC1441;
 
 const PVVX_LEN: usize = 19;
 const ATC1441_LEN: usize = 13;
@@ -38,7 +64,7 @@ pub struct SensorReading {
 /// Returns [`BleError::PayloadParse`] when the UUID is unrecognised or the
 /// payload length does not match any known format.
 pub fn parse_service_data(uuid: uuid::Uuid, data: &[u8]) -> Result<SensorReading, BleError> {
-    if uuid != SERVICE_UUID_181A {
+    if uuid != ServiceUuid::ATC1441 {
         return Err(BleError::PayloadParse(PayloadParseError::UnsupportedUuid(
             uuid,
         )));
