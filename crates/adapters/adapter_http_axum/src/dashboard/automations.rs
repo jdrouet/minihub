@@ -14,7 +14,7 @@ use minihub_app::ports::{
 use minihub_domain::automation::Automation;
 use minihub_domain::id::AutomationId;
 
-use crate::error::ApiError;
+use super::DashboardError;
 use crate::state::AppState;
 
 /// Automation list page template.
@@ -61,7 +61,7 @@ impl IntoResponse for ToggleEnabledResponse {
 /// `GET /automations` — list all automations.
 pub async fn list<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
-) -> AutomationListTemplate
+) -> Result<AutomationListTemplate, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -70,23 +70,19 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let automations = state
-        .automation_service
-        .list_automations()
-        .await
-        .unwrap_or_default();
+    let automations = state.automation_service.list_automations().await?;
 
-    AutomationListTemplate {
+    Ok(AutomationListTemplate {
         refresh_seconds: 10,
         automations,
-    }
+    })
 }
 
 /// `GET /automations/:id` — automation detail page.
 pub async fn detail<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
-) -> Result<AutomationDetailTemplate, ApiError>
+) -> Result<AutomationDetailTemplate, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -96,7 +92,7 @@ where
     AUR: AutomationRepository + Send + Sync + 'static,
 {
     let automation_id = AutomationId::from_str(&id).map_err(|_| {
-        ApiError::from(minihub_domain::error::MiniHubError::Validation(
+        DashboardError::from(minihub_domain::error::MiniHubError::Validation(
             minihub_domain::error::ValidationError::EmptyName,
         ))
     })?;
@@ -122,7 +118,7 @@ pub async fn toggle_enabled<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
     Path(id): Path<String>,
     Form(form): Form<ToggleForm>,
-) -> Result<ToggleEnabledResponse, ApiError>
+) -> Result<ToggleEnabledResponse, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -132,7 +128,7 @@ where
     AUR: AutomationRepository + Send + Sync + 'static,
 {
     let automation_id = AutomationId::from_str(&id).map_err(|_| {
-        ApiError::from(minihub_domain::error::MiniHubError::Validation(
+        DashboardError::from(minihub_domain::error::MiniHubError::Validation(
             minihub_domain::error::ValidationError::EmptyName,
         ))
     })?;

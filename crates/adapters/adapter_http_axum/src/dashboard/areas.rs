@@ -10,6 +10,7 @@ use minihub_app::ports::{
 };
 use minihub_domain::area::Area;
 
+use super::DashboardError;
 use crate::state::AppState;
 
 /// Area list page template.
@@ -29,7 +30,7 @@ impl IntoResponse for AreaListTemplate {
 /// `GET /areas` — list all areas.
 pub async fn list<ER, DR, AR, EP, ES, AUR>(
     State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
-) -> AreaListTemplate
+) -> Result<AreaListTemplate, DashboardError>
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -38,10 +39,10 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    let areas = state.area_service.list_areas().await.unwrap_or_default();
+    let areas = state.area_service.list_areas().await?;
 
-    AreaListTemplate {
+    Ok(AreaListTemplate {
         refresh_seconds: 10,
         areas,
-    }
+    })
 }

@@ -10,6 +10,7 @@ pub mod devices;
 pub mod entities;
 #[allow(clippy::missing_errors_doc)]
 pub mod events;
+#[allow(clippy::missing_errors_doc)]
 pub mod home;
 
 use askama::Template;
