@@ -1,7 +1,5 @@
 //! `SQLite` implementation of [`EventStore`].
 
-use std::str::FromStr;
-
 use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Row, SqlitePool};
 
@@ -22,19 +20,16 @@ impl Wrapper {
 
 impl<'r> FromRow<'r, SqliteRow> for Wrapper {
     fn from_row(row: &'r SqliteRow) -> Result<Self, sqlx::Error> {
-        let id: String = row.try_get("id")?;
+        let id: uuid::Uuid = row.try_get("id")?;
         let event_type: String = row.try_get("event_type")?;
-        let entity_id: Option<String> = row.try_get("entity_id")?;
+        let entity_id: Option<uuid::Uuid> = row.try_get("entity_id")?;
         let timestamp_str: String = row.try_get("timestamp")?;
         let data_json: String = row.try_get("data")?;
 
-        let id = EventId::from_str(&id).map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+        let id = EventId::from_uuid(id);
         let event_type: EventType = serde_json::from_str(&format!("\"{event_type}\""))
             .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
-        let entity_id = entity_id
-            .map(|s| EntityId::from_str(&s))
-            .transpose()
-            .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+        let entity_id = entity_id.map(EntityId::from_uuid);
         let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
             .map_err(|err| sqlx::Error::Decode(Box::new(err)))?
             .to_utc();
@@ -81,7 +76,7 @@ impl EventStore for SqliteEventStore {
         sqlx::query(INSERT)
             .bind(event.id.as_uuid())
             .bind(event.event_type.as_str())
-            .bind(event.entity_id.map(|id| id.as_uuid()))
+            .bind(event.entity_id.map(EntityId::as_uuid))
             .bind(event.timestamp.to_rfc3339())
             .bind(&data_json)
             .execute(&self.pool)
@@ -147,7 +142,7 @@ mod tests {
 
         let device_id = DeviceId::new();
         sqlx::query("INSERT INTO devices (id, name) VALUES (?, ?)")
-            .bind(device_id.to_string())
+            .bind(device_id.as_uuid())
             .bind("Test Device")
             .execute(&pool)
             .await
@@ -156,8 +151,8 @@ mod tests {
         let entity_id = EntityId::new();
         let now = chrono::Utc::now();
         sqlx::query("INSERT INTO entities (id, device_id, entity_id, friendly_name, state, attributes, last_changed, last_updated) VALUES (?, ?, ?, ?, ?, '{}', ?, ?)")
-            .bind(entity_id.to_string())
-            .bind(device_id.to_string())
+            .bind(entity_id.as_uuid())
+            .bind(device_id.as_uuid())
             .bind("light.test")
             .bind("Test Light")
             .bind("off")

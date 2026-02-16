@@ -1,7 +1,5 @@
 //! `SQLite` implementation of [`DeviceRepository`].
 
-use std::str::FromStr;
-
 use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Row, SqlitePool};
 
@@ -23,17 +21,14 @@ impl Wrapper {
 
 impl<'r> FromRow<'r, SqliteRow> for Wrapper {
     fn from_row(row: &'r SqliteRow) -> Result<Self, sqlx::Error> {
-        let id: String = row.try_get("id")?;
+        let id: uuid::Uuid = row.try_get("id")?;
         let name: String = row.try_get("name")?;
         let manufacturer: Option<String> = row.try_get("manufacturer")?;
         let model: Option<String> = row.try_get("model")?;
-        let area_id: Option<String> = row.try_get("area_id")?;
+        let area_id: Option<uuid::Uuid> = row.try_get("area_id")?;
 
-        let id = DeviceId::from_str(&id).map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
-        let area_id = area_id
-            .map(|s| AreaId::from_str(&s))
-            .transpose()
-            .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+        let id = DeviceId::from_uuid(id);
+        let area_id = area_id.map(AreaId::from_uuid);
 
         let integration: String = row.try_get("integration")?;
         let unique_id: String = row.try_get("unique_id")?;
@@ -78,7 +73,7 @@ impl DeviceRepository for SqliteDeviceRepository {
             .bind(&device.name)
             .bind(&device.manufacturer)
             .bind(&device.model)
-            .bind(device.area_id.map(|id| id.as_uuid()))
+            .bind(device.area_id.map(AreaId::as_uuid))
             .bind(&device.integration)
             .bind(&device.unique_id)
             .execute(&self.pool)
@@ -90,7 +85,7 @@ impl DeviceRepository for SqliteDeviceRepository {
 
     async fn get_by_id(&self, id: DeviceId) -> Result<Option<Device>, MiniHubError> {
         let row: Option<Wrapper> = sqlx::query_as(SELECT_BY_ID)
-            .bind(id.to_string())
+            .bind(id.as_uuid())
             .fetch_optional(&self.pool)
             .await
             .map_err(StorageError::from)?;
@@ -127,7 +122,7 @@ impl DeviceRepository for SqliteDeviceRepository {
             .bind(&device.name)
             .bind(&device.manufacturer)
             .bind(&device.model)
-            .bind(device.area_id.map(|id| id.as_uuid()))
+            .bind(device.area_id.map(AreaId::as_uuid))
             .bind(&device.integration)
             .bind(&device.unique_id)
             .bind(device.id.as_uuid())
