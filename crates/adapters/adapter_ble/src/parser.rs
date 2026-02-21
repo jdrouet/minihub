@@ -25,6 +25,10 @@ impl ServiceUuid {
     pub const APPLE_CONTINUITY: uuid::Uuid =
         uuid::Uuid::from_u128(0x0000_FEA0_0000_1000_8000_0080_5F9B_34FB);
 
+    /// Xiaomi Mi Flora (HHCCJCY01) service UUID (`0xFE95`).
+    pub const MIFLORA: uuid::Uuid =
+        uuid::Uuid::from_u128(0x0000_FE95_0000_1000_8000_0080_5F9B_34FB);
+
     /// All service UUIDs used for BLE scanning filters.
     #[must_use]
     pub fn all() -> Vec<uuid::Uuid> {
@@ -32,6 +36,7 @@ impl ServiceUuid {
             Self::ATC1441,
             Self::GOOGLE_FAST_PAIR,
             Self::APPLE_CONTINUITY,
+            Self::MIFLORA,
         ]
     }
 }
