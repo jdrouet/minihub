@@ -15,8 +15,9 @@
 
 - The **core** domain model (entities, devices, areas, automations) knows nothing about HTTP, SQLite, or MQTT
 - The **application** layer defines contracts (ports) but doesn't implement infrastructure
-- **Adapters** implement those contracts using concrete technologies
-- The **binary** wires everything together at runtime
+- **Native adapters** implement those contracts using concrete technologies (axum, sqlx, rumqttc, btleplug)
+- The **WASM dashboard adapter** is a Leptos CSR app that depends on domain types only and communicates with the server via HTTP/SSE
+- The **binary** wires all native adapters together at runtime and serves the pre-built WASM dashboard as static files
 
 ---
 
@@ -93,11 +94,26 @@ pub trait DeviceService {
 #### `adapter_http_axum`
 **Responsibilities:**
 - REST API endpoints (JSON responses)
-- Server-side rendered HTML dashboard (no JavaScript)
+- Serves Leptos WASM dashboard as static files
+- SSE endpoint for real-time entity state push
 - HTTP request/response handling
 - Implements **driving ports** (receives external requests)
 
-**Dependencies:** `minihub-app`, `minihub-domain`, `axum`, `serde`
+**Dependencies:** `minihub-app`, `minihub-domain`, `axum`, `serde`, `tower-http` (static files)
+
+---
+
+#### `adapter_dashboard_leptos`
+**Responsibilities:**
+- Client-side dashboard UI compiled to WASM via Leptos (CSR mode)
+- Pages: home overview, devices, entities (with state control), areas, events, automations
+- Time-series charts for sensor history using `plotters`
+- Real-time updates via SSE subscription
+- Consumes `/api/*` JSON endpoints from `adapter_http_axum`
+
+**Dependencies:** `minihub-domain` (shared types for API responses), `leptos`, `gloo-net`, `plotters`
+
+**Build:** Compiled to `wasm32-unknown-unknown` via `trunk`, output served as static assets by axum
 
 ---
 
@@ -166,13 +182,15 @@ async fn main() -> Result<()> {
 │                   crates/bin/minihubd                   │
 │                   (Composition Root)                    │
 └──────────────────────┬──────────────────────────────────┘
-                       │ depends on all
+                       │ depends on all native adapters
           ┌────────────┼────────────┬────────────┐
           │            │            │            │
           ▼            ▼            ▼            ▼
 ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
 │   adapter   │ │   adapter   │ │   adapter   │ │  more...    │
-│  http_axum  │ │storage_sqlx │ │    mqtt     │ │  adapters   │
+│  http_axum  │ │storage_sqlx │ │  mqtt/ble   │ │  adapters   │
+│ (API + SSE  │ │             │ │             │ │             │
+│ + static)   │ │             │ │             │ │             │
 └──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
        │               │               │               │
        └───────────────┴───────┬───────┴───────────────┘
@@ -189,14 +207,24 @@ async fn main() -> Result<()> {
                         │crates/domain│
                         │  (Domain &  │
                         │ Foundation) │
-                        └─────────────┘
+                        └──────┬──────┘
+                               │ shared types
+                               ▼
+                 ┌──────────────────────────┐
+                 │  adapter_dashboard_leptos │
+                 │   (WASM, built via trunk) │
+                 │   depends on domain only  │
+                 └──────────────────────────┘
 ```
+
+**Note:** `adapter_dashboard_leptos` is compiled separately to `wasm32-unknown-unknown` via `trunk`. It depends only on `minihub-domain` for shared API response types. It does NOT depend on `app` or any other adapter — it communicates with the server exclusively via HTTP/SSE.
 
 **Allowed Dependencies:**
 - `domain` → (none)
 - `app` → `domain`
-- `adapter_*` → `app`, `domain`
-- `minihubd` → all crates
+- `adapter_*` (native) → `app`, `domain`
+- `adapter_dashboard_leptos` (WASM) → `domain` only (communicates with server via HTTP)
+- `minihubd` → all native crates (not the WASM dashboard — it is built separately via `trunk`)
 
 ---
 
@@ -390,6 +418,8 @@ In root `Cargo.toml`:
 members = [
     # ... existing members ...
     "crates/adapters/adapter_zigbee",
+    # NOTE: adapter_dashboard_leptos is NOT a workspace member — it is
+    # compiled separately to wasm32-unknown-unknown via trunk.
 ]
 
 [workspace.dependencies]
@@ -416,12 +446,16 @@ async fn test_zigbee_connection() {
 
 **Request Flow:**
 
-1. **User Action**: Clicks "Toggle" button on the web dashboard
+1. **User Action**: Clicks "Toggle" button in the Leptos dashboard (WASM running in browser)
 
-2. **HTTP Adapter** (`adapter_http_axum`):
-   - Receives POST request at `/api/devices/{id}/toggle`
-   - Extracts `DeviceId` from path
-   - Calls `DeviceService::toggle_device(device_id)`
+2. **Dashboard** (`adapter_dashboard_leptos`, WASM):
+   - Leptos component calls `PUT /api/entities/{id}/state` via `gloo-net` fetch
+   - Sends JSON body with new state
+
+3. **HTTP Adapter** (`adapter_http_axum`):
+   - Receives PUT request at `/api/entities/{id}/state`
+   - Extracts `EntityId` from path
+   - Calls `EntityService::update_entity_state(entity_id, new_state)`
 
 3. **Use Case** (`app/device_service.rs`):
    ```rust
@@ -469,11 +503,12 @@ async fn test_zigbee_connection() {
    - Returns HTTP 200 with device state
 
 **Crate Involvement:**
-- `adapter_http_axum`: Receives HTTP request, returns HTTP response
+- `adapter_dashboard_leptos` (WASM): User clicks toggle, sends API request, reactively updates UI on response
+- `adapter_http_axum`: Receives HTTP request, returns JSON response, pushes SSE event
 - `app`: Orchestrates the workflow via use case
-- `domain`: Provides `DeviceId`, error types, validates and applies domain logic (`device.toggle()`)
-- `adapter_storage_sqlite_sqlx`: Persists to database
-- `adapter_mqtt`: Publishes event
+- `domain`: Provides `EntityId`, error types, validates and applies domain logic
+- `adapter_storage_sqlite_sqlx`: Persists state change to database + entity history
+- `adapter_mqtt`: Publishes event to MQTT topic (if entity is MQTT-managed)
 
 ---
 

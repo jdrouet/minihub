@@ -1,16 +1,15 @@
 # minihub
 
-A tiny, Rust-only, Home-Assistant-inspired home automation server with first-class dashboards that require **no JavaScript**.
+A tiny, Rust-only, Home-Assistant-inspired home automation server with a reactive WASM dashboard — **no hand-written JavaScript**.
 
 ## What it is
 
-minihub is a minimal home automation hub that manages **entities** (lights, sensors, switches, …), organises them into **devices** and **areas**, exposes **services** to control them, logs **events**, and supports simple **automations** — all accessible through a server-rendered HTML dashboard and a JSON API.
+minihub is a minimal home automation hub that manages **entities** (lights, sensors, switches, …), organises them into **devices** and **areas**, exposes **services** to control them, logs **events**, records **sensor history**, and supports simple **automations** — all accessible through a reactive Leptos WASM dashboard and a JSON API.
 
 ## Non-goals
 
-- **Not** a Home Assistant replacement. minihub targets hobbyists who want a small, understandable system.
 - **Not** a plugin marketplace. Integrations are compiled-in Rust crates, not dynamically loaded.
-- **No JavaScript.** The dashboard is fully server-rendered HTML. No JS bundles, no WASM-requiring-JS, no npm.
+- **No hand-written JavaScript.** The dashboard is a Leptos CSR app compiled to WASM. The only JS is a tiny auto-generated bootstrap script. No npm, no `node_modules`, no hand-written `<script>` tags.
 - **No cloud.** minihub runs locally. There is no cloud account, no telemetry, no phone-home.
 - **No YAML soup.** Configuration uses a single, well-typed format (TOML or code-level config).
 
@@ -24,8 +23,9 @@ minihub follows a **hexagonal architecture** (ports & adapters) enforced by Carg
 │                (binary crate)                   │  (wires everything)
 ├────────────┬────────────┬───────────────────────┤
 │ adapter    │ adapter    │ adapter               │
-│ http_axum  │ storage    │ mqtt (future)         │  driven + driving
-│            │ sqlite_sqlx│                       │  adapters
+│ http_axum  │ storage    │ mqtt / ble / virtual  │  driven + driving
+│ (API+SSE+  │ sqlite_sqlx│                       │  adapters
+│  static)   │            │                       │
 ├────────────┴────────────┴───────────────────────┤
 │                   app                           │  use-cases + port
 │           (services + port traits)              │  trait definitions
@@ -33,6 +33,10 @@ minihub follows a **hexagonal architecture** (ports & adapters) enforced by Carg
 │                  domain                         │  pure domain model
 │     (IDs, errors, time, entities, devices,      │  (no IO)
 │      areas, events, services, automations)      │
+├ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┤
+│          adapter_dashboard_leptos               │  WASM (built via
+│        (Leptos CSR → wasm32, depends            │  trunk, served as
+│         on domain only, talks HTTP/SSE)         │  static assets)
 └─────────────────────────────────────────────────┘
 ```
 
@@ -56,17 +60,20 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details.
 | **Event**      | An immutable record of something that happened (state change, service call, automation trigger). |
 | **Automation** | A trigger → condition → action rule that reacts to events or state changes. |
 | **Integration**| A Rust crate that connects an external protocol or virtual device into minihub. |
+| **Entity History** | Time-series record of entity state/attribute changes, powering dashboard charts. |
 
-## No-JS dashboard approach
+## Dashboard approach
 
-The web dashboard is rendered entirely server-side. The techniques used:
+The web dashboard is a **Leptos CSR app** compiled to WASM — no hand-written JavaScript.
 
-1. **Full HTML pages** — every route returns a complete HTML document. No client-side routing.
-2. **HTML forms** — interactive controls (toggle switches, sliders, buttons) are `<form>` elements that POST to the server. The server processes the action and redirects back (PRG pattern).
-3. **Auto-refresh** — pages that display live state include `<meta http-equiv="refresh" content="5">` to reload automatically.
-4. **CSS-only styling** — progressive visual enhancement using pure CSS (no JS-based component libraries).
+1. **Leptos components** — reactive UI built in Rust, compiled to `wasm32-unknown-unknown` via `trunk`.
+2. **Client-side routing** — Leptos router handles page navigation without full reloads.
+3. **API-driven** — all data fetched from `/api/*` JSON endpoints via `gloo-net`.
+4. **Real-time updates** — SSE subscription (`/api/events/stream`) pushes entity state changes to the UI. When a sensor updates, only that widget re-renders (fine-grained reactivity, no virtual DOM).
+5. **Sensor history charts** — `plotters` (pure Rust, compiles to WASM) renders time-series data to `<canvas>`.
+6. **Static asset serving** — `minihubd` serves the pre-built WASM bundle at `/`, API at `/api/*`.
 
-This approach works in any browser, including text-mode browsers, curl, and accessibility tools.
+The only JavaScript is a ~10-line auto-generated bootstrap script that loads the `.wasm` binary.
 
 ## Development workflow
 
@@ -118,7 +125,9 @@ cargo llvm-cov --html
 | **M3** | Events & automations | Event log, automation engine, automation dashboard |
 | **M4** | Virtual integration | Built-in demo integration with simulated devices |
 | **M5** | Polish & harden | Error handling, logging, config, graceful shutdown, docs |
-| **M6** | MQTT integration (stretch) | MQTT adapter for real devices |
+| **M6** | MQTT integration | MQTT adapter for real devices |
+| **M7** | Passive BLE integration | BLE scanning for Xiaomi LYWSD03MMC sensors |
+| **M8** | Leptos dashboard + entity history | Replace SSR with Leptos WASM CSR, add sensor history charts, SSE real-time updates |
 
 See [TASKS.md](TASKS.md) for detailed task breakdown and definitions of done.
 

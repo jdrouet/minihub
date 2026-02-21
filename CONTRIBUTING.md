@@ -40,7 +40,7 @@ All three must pass.
 - [ ] New code has tests (aim for the milestone's coverage target)
 - [ ] No `unwrap()` or `expect()` in non-test code (use proper error handling)
 - [ ] Doc comments on public items
-- [ ] No JavaScript added anywhere
+- [ ] No hand-written JavaScript added (WASM/Leptos only)
 - [ ] Dependency rules respected (see [ARCHITECTURE.md](docs/ARCHITECTURE.md)):
   - `domain` does not depend on `app` or any adapter
   - `app` does not depend on any adapter
@@ -349,9 +349,43 @@ This pattern ensures:
 - Service construction logic is encapsulated in `build()`
 - Consistent API across all adapters
 
-### No JavaScript
+### No hand-written JavaScript
 
-Do not use JavaScript in the dashboard. Use server-rendered HTML with forms (PRG pattern) and `<meta http-equiv="refresh">` for live updates. No JS, no WASM-requiring-JS, no npm.
+The dashboard is a Leptos CSR app compiled entirely to WASM. Do not write JavaScript by hand. The only JS in the project is the auto-generated `trunk` bootstrap script that loads the `.wasm` binary.
+
+- Do not add `<script>` tags with hand-written JS
+- Do not add npm dependencies or a `package.json`
+- Do not use JS charting libraries — use `plotters` (pure Rust, compiles to WASM)
+- For browser APIs not yet exposed by Leptos, use `web-sys` / `js-sys` — not inline JS
+
+### Leptos component conventions
+
+Dashboard UI lives in `crates/adapters/adapter_dashboard_leptos/`.
+
+- Components are functions annotated with `#[component]`
+- Use fine-grained signals (`ReadSignal`, `WriteSignal`) — avoid cloning entire state
+- Pages go in `src/pages/` (one file per route: `home.rs`, `devices.rs`, `entities.rs`, etc.)
+- Shared components go in `src/components/` (e.g., `nav.rs`, `stat_card.rs`, `chart.rs`)
+- API calls use `leptos::spawn_local` + `gloo-net` or `reqwasm` for fetch
+- Real-time updates subscribe to SSE via `/api/events/stream`
+- Prefer `view!` macro over `html!` for RSX syntax
+- Component props use `#[prop(into)]` for ergonomic callers
+
+### Building the dashboard
+
+```bash
+# Install trunk (one-time)
+cargo install trunk
+
+# Install WASM target (one-time)
+rustup target add wasm32-unknown-unknown
+
+# Build dashboard WASM bundle
+trunk build crates/adapters/adapter_dashboard_leptos/index.html
+
+# Or use just
+just build-dashboard
+```
 
 ### Error types
 

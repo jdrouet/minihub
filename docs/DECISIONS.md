@@ -16,6 +16,8 @@ minihub is a tiny Rust-only home automation server.
 - [ADR-008: Trait-based integration model with lifecycle and context injection](#adr-008-trait-based-integration-model-with-lifecycle-and-context-injection)
 - [ADR-009: Use rumqttc for MQTT client](#adr-009-use-rumqttc-for-mqtt-client)
 - [ADR-010: Use btleplug for passive BLE scanning](#adr-010-use-btleplug-for-passive-ble-scanning)
+- [ADR-011: Leptos WASM dashboard](#adr-011-leptos-wasm-dashboard)
+- [ADR-012: Entity history for time-series sensor data](#adr-012-entity-history-for-time-series-sensor-data)
 
 ---
 
@@ -92,7 +94,7 @@ Use sqlx with SQLite for persistence. sqlx provides compile-time query checking 
 
 ## ADR-003: No-JavaScript dashboard
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-011](#adr-011-leptos-wasm-dashboard)
 
 **Date:** 2026-02-08
 
@@ -124,6 +126,10 @@ Use server-side rendered HTML with standard HTML forms following the POST-Redire
 - Limited interactivity compared to JavaScript-based solutions
 - Full page reloads on user actions
 - Cannot use modern UI patterns like optimistic updates
+
+### Supersession Note
+
+This decision served the project well through M1–M7 but limits the dashboard UX for a real Home Assistant replacement. A home automation dashboard needs real-time device state updates, interactive charts for sensor history, and responsive controls — none of which are practical with pure SSR and meta-refresh. See [ADR-011](#adr-011-leptos-wasm-dashboard) for the replacement approach.
 
 ---
 
@@ -234,7 +240,7 @@ Use cargo-llvm-cov as the code coverage tool. It leverages LLVM's source-based c
 
 ## ADR-007: Use askama for HTML templating
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-011](#adr-011-leptos-wasm-dashboard)
 
 **Date:** 2026-02-08
 
@@ -264,6 +270,10 @@ Use askama for compile-time-checked Jinja2-style HTML templates. Templates live 
 - Separate template files to manage alongside Rust code
 - Jinja2 syntax has a learning curve for those unfamiliar with it
 - Template errors surface as compile errors, which can be cryptic
+
+### Supersession Note
+
+With the move to a Leptos WASM dashboard (ADR-011), askama templates are no longer needed. The dashboard UI is now defined as Leptos components in Rust, compiled to WASM. The askama dependency and all `.html` template files are removed from `adapter_http_axum`.
 
 ---
 
@@ -374,3 +384,118 @@ Use btleplug (v0.11) as the BLE scanning library. btleplug is a cross-platform R
 **Negative:**
 - Platform-native backends (CoreBluetooth on macOS, BlueZ/D-Bus on Linux) mean behaviour can differ slightly across platforms
 - Higher-level abstraction may not expose every BlueZ-specific feature
+
+---
+
+## ADR-011: Leptos WASM dashboard
+
+**Status:** Accepted
+
+**Date:** 2026-02-21
+
+**Supersedes:** [ADR-003](#adr-003-no-javascript-dashboard), [ADR-007](#adr-007-use-askama-for-html-templating)
+
+### Context
+
+minihub aims to replace Home Assistant for hobbyist use. The SSR dashboard (ADR-003) served early milestones well but has fundamental limitations for a home automation UI:
+
+- No real-time device state updates (only meta-refresh polling)
+- No interactive charts for sensor history (temperature over 24h, humidity trends)
+- Full page reloads on every action (toggling a light reloads the entire page)
+- No drag-and-drop automation builder possible
+- No responsive, app-like feel for mobile use (checking sensors on phone)
+
+The project's core principle remains **minimal hand-written JavaScript**. The dashboard should stay in the Rust ecosystem.
+
+### Decision
+
+Use Leptos in CSR (client-side rendering) mode. The dashboard is compiled to WASM and served as static assets by the existing axum server. The dashboard consumes the existing `/api/*` JSON endpoints. A small auto-generated JS bootstrap script (~10 lines) loads the `.wasm` binary — no hand-written JavaScript.
+
+The `adapter_http_axum` crate becomes API-only (JSON endpoints + static file serving). A new `adapter_dashboard_leptos` crate contains all UI components, compiled to WASM via `trunk`.
+
+### Alternatives Considered
+
+- **Yew**: Older, larger community. React-like virtual DOM model. Larger WASM bundle sizes. Less ergonomic API. No built-in server function support.
+- **Dioxus**: Similar to Leptos but less mature axum integration. Broader platform targets (desktop, mobile) that minihub doesn't need.
+- **HTMX**: Adds progressive enhancement to SSR but still requires a JavaScript runtime and doesn't support charts or complex interactivity natively.
+- **Keep SSR + add chart images**: Server-side chart rendering (e.g., plotters to PNG). Avoids WASM but produces static images, no interactivity, high server load on Raspberry Pi.
+
+### Consequences
+
+**Positive:**
+- Fine-grained reactivity — when one sensor updates, only that widget re-renders (no vdom diffing)
+- Real-time updates via SSE subscription from Leptos components
+- Interactive charts for sensor history using `plotters` (pure Rust, compiles to WASM, renders to `<canvas>`)
+- No hand-written JavaScript — entire dashboard is Rust compiled to WASM
+- Smaller WASM bundles than Yew (important for Raspberry Pi on local network)
+- Native axum integration via `leptos_axum` (same server, same binary)
+- CSR mode means minimal server load — axum just serves static files + JSON API
+- Same type system for API responses and UI rendering (shared domain types)
+
+**Negative:**
+- Adds `trunk` as a build tool for WASM compilation
+- Requires `wasm32-unknown-unknown` target installed via rustup
+- Initial page load requires downloading WASM bundle (mitigated by local network use)
+- Leptos ecosystem is younger than Yew — fewer third-party component libraries
+- Two compilation targets in one workspace (native for server, wasm32 for dashboard)
+
+### Build & Deployment
+
+- `trunk build` compiles `adapter_dashboard_leptos` to WASM + generates `index.html` with bootstrap JS
+- Output goes to a `dist/` directory
+- `minihubd` serves `dist/` at `/` as static files, API at `/api/*`
+- Single binary deployment: embed WASM assets via `include_dir` or serve from filesystem
+
+---
+
+## ADR-012: Entity history for time-series sensor data
+
+**Status:** Accepted
+
+**Date:** 2026-02-21
+
+### Context
+
+A home automation dashboard needs to display sensor data over time — temperature graphs, humidity trends, switch on/off timelines, energy usage patterns. The current `events` table stores immutable event records but is not optimized for time-range queries on entity state/attribute values.
+
+Integrations (MQTT, BLE, virtual) already push state changes through the event bus. The missing piece is persisting these changes in a format optimized for time-series queries that power dashboard charts.
+
+### Decision
+
+Add an `EntityHistory` domain type and `EntityHistoryRepository` port. Store entity state and attribute snapshots in a dedicated `entity_history` SQLite table, indexed on `(entity_id, recorded_at)` for efficient range queries. Wire history recording into the existing event bus worker — when a `StateChanged` or `AttributeChanged` event fires, a history record is appended.
+
+Schema:
+
+```sql
+CREATE TABLE entity_history (
+    id BLOB PRIMARY KEY NOT NULL,
+    entity_id BLOB NOT NULL,
+    state TEXT NOT NULL,
+    attributes TEXT NOT NULL,  -- JSON
+    recorded_at TEXT NOT NULL,  -- ISO 8601
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_entity_history_range
+    ON entity_history(entity_id, recorded_at DESC);
+```
+
+### Alternatives Considered
+
+- **Reuse events table**: Already stores state changes, but the JSON `data` field is unstructured and not indexed for range queries. Adding indexes would bloat the general event table.
+- **External time-series DB (InfluxDB, TimescaleDB)**: Better for high-volume metrics but adds an external dependency, violating the single-binary deployment model.
+- **RRDtool / round-robin approach**: Fixed-size storage with automatic downsampling. Interesting but adds complexity and an external dependency.
+
+### Consequences
+
+**Positive:**
+- Dedicated index on `(entity_id, recorded_at)` enables fast range queries for charts
+- Separate from events table — history can have its own retention policy without affecting event log
+- Simple schema — just snapshots of state + attributes at a point in time
+- Powers dashboard charts: temperature over 24h, switch timeline, etc.
+- Configurable retention (default: 30 days) with periodic purge
+
+**Negative:**
+- Additional storage overhead (one row per state change per entity)
+- Requires a background purge task for retention enforcement
+- SQLite single-writer constraint may bottleneck under very high-frequency sensor updates (mitigated: batch inserts, WAL mode)
