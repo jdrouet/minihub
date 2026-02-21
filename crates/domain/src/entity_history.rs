@@ -68,6 +68,12 @@ impl EntityHistory {
     pub fn builder() -> EntityHistoryBuilder {
         EntityHistoryBuilder::default()
     }
+
+    /// Look up an attribute by key.
+    #[must_use]
+    pub fn get_attribute(&self, key: &str) -> Option<&AttributeValue> {
+        self.attributes.get(key)
+    }
 }
 
 /// Step-by-step builder for [`EntityHistory`].
