@@ -9,8 +9,8 @@ use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
 use minihub_app::ports::{
-    AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
-    EventStore,
+    AreaRepository, AutomationRepository, DeviceRepository, EntityHistoryRepository,
+    EntityRepository, EventPublisher, EventStore,
 };
 use minihub_domain::area::Area;
 use minihub_domain::error::MiniHubError;
@@ -79,8 +79,8 @@ impl IntoResponse for DeleteResponse {
 }
 
 /// `GET /api/areas`
-pub async fn list<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn list<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
 ) -> Result<ListResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
@@ -89,14 +89,15 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let areas = state.area_service.list_areas().await?;
     Ok(ListResponse::Ok(Json(areas)))
 }
 
 /// `GET /api/areas/:id`
-pub async fn get<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn get<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Path(id): Path<String>,
 ) -> Result<GetResponse, ApiError>
 where
@@ -106,6 +107,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let area_id = AreaId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
@@ -117,8 +119,8 @@ where
 }
 
 /// `POST /api/areas`
-pub async fn create<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn create<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Json(req): Json<CreateAreaRequest>,
 ) -> Result<CreateResponse, ApiError>
 where
@@ -128,6 +130,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let parent_id = req
         .parent_id
@@ -150,8 +153,8 @@ where
 }
 
 /// `DELETE /api/areas/:id`
-pub async fn delete<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn delete<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Path(id): Path<String>,
 ) -> Result<DeleteResponse, ApiError>
 where
@@ -161,6 +164,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let area_id = AreaId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(

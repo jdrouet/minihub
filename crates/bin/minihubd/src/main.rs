@@ -223,6 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         area_service,
         event_store,
         automation_service,
+        history_repo,
     );
     let dashboard_dir = config.dashboard_dir();
     let app = minihub_adapter_http_axum::router::build(state, dashboard_dir.as_deref());
