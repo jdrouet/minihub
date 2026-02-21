@@ -222,7 +222,9 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     /// Connect to each discovered Mi Flora peripheral and read sensor data.
     ///
     /// Iterates all peripherals known to the central adapter, identifies
-    /// Mi Flora devices by their local name (`"Flower care"`), applies the
+    /// Mi Flora devices by their local name (`"Flower care"`), extracts
+    /// the real MAC from the `0xFE95` `MiBeacon` service data (since
+    /// `peripheral.address()` returns zeroed bytes on macOS), applies the
     /// MAC allowlist filter, then performs a GATT readout with a per-device
     /// timeout. Failures on individual devices are logged and skipped.
     async fn read_miflora_devices(&self, central: &btleplug::platform::Adapter) {
@@ -247,26 +249,41 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                 continue;
             }
 
-            let mac = props.address.to_string();
-            if !self.passes_miflora_filter(&mac) {
-                tracing::debug!(%mac, "Mi Flora filtered out by miflora_filter");
+            let Some(mibeacon_data) = props.service_data.get(&ServiceUuid::MIFLORA) else {
+                tracing::debug!("Mi Flora peripheral has no 0xFE95 service data, skipping");
+                continue;
+            };
+
+            let mac_bytes = match miflora::parse_mibeacon_mac(mibeacon_data) {
+                Ok(mac) => mac,
+                Err(err) => {
+                    tracing::warn!(%err, "failed to parse Mi Flora MAC from MiBeacon payload");
+                    continue;
+                }
+            };
+
+            let mac_str = parser::format_mac(mac_bytes);
+            if !self.passes_miflora_filter(&mac_str) {
+                tracing::debug!(mac = %mac_str, "Mi Flora filtered out by miflora_filter");
                 continue;
             }
 
-            tracing::debug!(%mac, "reading Mi Flora sensor via GATT");
+            tracing::debug!(mac = %mac_str, "reading Mi Flora sensor via GATT");
 
-            let result =
-                tokio::time::timeout(self.miflora_connect_timeout, gatt::read_miflora(peripheral))
-                    .await;
+            let result = tokio::time::timeout(
+                self.miflora_connect_timeout,
+                gatt::read_miflora(peripheral, mac_bytes),
+            )
+            .await;
 
             let reading = match result {
                 Ok(Ok(reading)) => reading,
                 Ok(Err(err)) => {
-                    tracing::warn!(%err, %mac, "failed to read Mi Flora device");
+                    tracing::warn!(%err, mac = %mac_str, "failed to read Mi Flora device");
                     continue;
                 }
                 Err(_) => {
-                    tracing::warn!(%mac, "Mi Flora GATT readout timed out");
+                    tracing::warn!(mac = %mac_str, "Mi Flora GATT readout timed out");
                     continue;
                 }
             };
@@ -274,11 +291,11 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
             match miflora::build_discovered(&reading) {
                 Ok(dd) => {
                     if let Err(err) = self.context.persist_discovered(dd).await {
-                        tracing::warn!(%err, %mac, "failed to persist Mi Flora discovery");
+                        tracing::warn!(%err, mac = %mac_str, "failed to persist Mi Flora discovery");
                     }
                 }
                 Err(err) => {
-                    tracing::warn!(%err, %mac, "failed to build Mi Flora discovered device");
+                    tracing::warn!(%err, mac = %mac_str, "failed to build Mi Flora discovered device");
                 }
             }
         }
