@@ -2,11 +2,8 @@
 
 use gloo_net::http::Request;
 use minihub_domain::{
-    area::Area,
-    automation::Automation,
-    device::Device,
-    entity::Entity,
-    event::Event,
+    area::Area, automation::Automation, device::Device, entity::Entity,
+    entity_history::EntityHistory, event::Event,
 };
 
 /// Error returned by API client methods.
@@ -120,6 +117,32 @@ pub async fn fetch_automation(id: &str) -> Result<Automation, ApiError> {
     let resp = Request::get(&url).send().await?;
     let automation: Automation = resp.json().await?;
     Ok(automation)
+}
+
+/// Fetch entity history for a given time range.
+///
+/// `from` and `to` are RFC 3339 timestamps. If omitted, the server defaults
+/// to the last 24 hours with a limit of 1000 records.
+pub async fn fetch_entity_history(
+    id: &str,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Vec<EntityHistory>, ApiError> {
+    let mut url = format!("/api/entities/{id}/history");
+    let mut params = Vec::new();
+    if let Some(f) = from {
+        params.push(format!("from={f}"));
+    }
+    if let Some(t) = to {
+        params.push(format!("to={t}"));
+    }
+    if !params.is_empty() {
+        url.push('?');
+        url.push_str(&params.join("&"));
+    }
+    let resp = Request::get(&url).send().await?;
+    let history: Vec<EntityHistory> = resp.json().await?;
+    Ok(history)
 }
 
 /// Update automation (toggle enabled state).
