@@ -228,6 +228,9 @@ mod tests {
         StubAutomationRepo,
         StubEntityHistoryRepo,
     > {
+        use minihub_app::event_bus::InProcessEventBus;
+        use std::sync::Arc;
+
         AppState::new(
             EntityService::new(StubEntityRepo, StubPublisher),
             DeviceService::new(StubDeviceRepo),
@@ -235,6 +238,7 @@ mod tests {
             StubEventStore,
             AutomationService::new(StubAutomationRepo),
             StubEntityHistoryRepo,
+            Arc::new(InProcessEventBus::new(16)),
         )
     }
 

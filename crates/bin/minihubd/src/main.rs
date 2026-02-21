@@ -136,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = ServiceContext::new(
         Arc::clone(&device_service),
         Arc::clone(&entity_service),
-        event_bus,
+        Arc::clone(&event_bus),
     );
 
     // Integrations
@@ -224,6 +224,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_store,
         automation_service,
         history_repo,
+        event_bus,
     );
     let dashboard_dir = config.dashboard_dir();
     let app = minihub_adapter_http_axum::router::build(state, dashboard_dir.as_deref());
