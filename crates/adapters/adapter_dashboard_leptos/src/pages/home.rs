@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::api::{self, DashboardCounts};
-use crate::components::StatCard;
+use crate::components::{Loading, StatCard};
 
 /// Home page displaying entity, device, and area counts.
 #[component]
@@ -11,7 +11,7 @@ pub fn Home() -> impl IntoView {
     view! {
         <div>
             <h1>"Home"</h1>
-            <Suspense fallback=move || view! { <p>"Loading…"</p> }>
+            <Suspense fallback=move || view! { <Loading/> }>
                 {move || {
                     counts.read().as_ref().map(|result| match result {
                         Ok(DashboardCounts { entities, devices, areas }) => view! {

@@ -3,7 +3,7 @@ use leptos::task::spawn_local;
 use minihub_domain::event::Event;
 
 use crate::api;
-use crate::components::EventTable;
+use crate::components::{EventTable, Loading};
 use crate::sse::use_sse_events;
 
 const MAX_EVENTS: usize = 100;
@@ -43,7 +43,7 @@ pub fn Events() -> impl IntoView {
             <p class="hint">"Showing most recent events (up to 100) — live updates enabled"</p>
             {move || {
                 match events.get() {
-                    None => view! { <p>"Loading events\u{2026}"</p> }.into_any(),
+                    None => view! { <Loading message="Loading events\u{2026}"/> }.into_any(),
                     Some(Err(err)) => view! {
                         <p class="error">{"Failed to load events: "} {err}</p>
                     }.into_any(),

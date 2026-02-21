@@ -262,7 +262,6 @@ pub fn HistoryChart(entity_id: ReadSignal<String>) -> impl IntoView {
                             id=canvas_id
                             width=CHART_WIDTH.to_string()
                             height=CHART_HEIGHT.to_string()
-                            style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px;"
                         />
                     }
                         .into_any()

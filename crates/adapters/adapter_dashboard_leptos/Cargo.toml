@@ -15,13 +15,14 @@ crate-type = ["cdylib", "rlib"]
 leptos = { version = "0.8", default-features = false, features = ["csr"] }
 leptos_router = { version = "0.8", default-features = false }
 gloo-net = "0.6"
+gloo-timers = { version = "0.3", features = ["futures"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 minihub-domain = { path = "../../domain" }
 
 # WASM-specific dependencies
 uuid = { version = "1", features = ["v4", "serde", "js"] }
-web-sys = { version = "0.3", features = ["EventSource", "MessageEvent", "Event", "EventTarget", "HtmlCanvasElement", "Window"] }
+web-sys = { version = "0.3", features = ["EventSource", "MessageEvent", "Event", "EventTarget", "HtmlCanvasElement", "HtmlElement", "DomStringMap", "Storage", "Window"] }
 wasm-bindgen = "0.2"
 
 # Charting

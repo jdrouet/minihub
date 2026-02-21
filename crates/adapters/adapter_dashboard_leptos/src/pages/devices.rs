@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::api;
-use crate::components::DeviceTable;
+use crate::components::{DeviceTable, Loading};
 
 /// Devices page displaying all devices in a table.
 #[component]
@@ -11,7 +11,7 @@ pub fn Devices() -> impl IntoView {
     view! {
         <div>
             <h1>"Devices"</h1>
-            <Suspense fallback=move || view! { <p>"Loading devices…"</p> }>
+            <Suspense fallback=move || view! { <Loading message="Loading devices\u{2026}"/> }>
                 {move || {
                     devices.read().as_ref().map(|result| match result {
                         Ok(devices_list) => view! {

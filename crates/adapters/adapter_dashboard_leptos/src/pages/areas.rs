@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::api;
-use crate::components::AreaTable;
+use crate::components::{AreaTable, Loading};
 
 /// Areas page displaying all areas in a table.
 #[component]
@@ -11,7 +11,7 @@ pub fn Areas() -> impl IntoView {
     view! {
         <div>
             <h1>"Areas"</h1>
-            <Suspense fallback=move || view! { <p>"Loading areas…"</p> }>
+            <Suspense fallback=move || view! { <Loading message="Loading areas\u{2026}"/> }>
                 {move || {
                     areas.read().as_ref().map(|result| match result {
                         Ok(areas_list) => view! {

@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
 
+use super::ThemeToggle;
+
+/// Top navigation bar with page links and theme toggle.
 #[component]
 pub fn Nav() -> impl IntoView {
     view! {
@@ -13,6 +16,7 @@ pub fn Nav() -> impl IntoView {
                 <li><A href="/events">"Events"</A></li>
                 <li><A href="/automations">"Automations"</A></li>
             </ul>
+            <ThemeToggle/>
         </nav>
     }
 }

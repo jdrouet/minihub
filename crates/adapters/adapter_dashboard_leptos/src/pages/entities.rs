@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::api;
-use crate::components::EntityTable;
+use crate::components::{EntityTable, Loading};
 
 /// Entities page displaying all entities in a table with state badges.
 #[component]
@@ -11,7 +11,7 @@ pub fn Entities() -> impl IntoView {
     view! {
         <div>
             <h1>"Entities"</h1>
-            <Suspense fallback=move || view! { <p>"Loading entities…"</p> }>
+            <Suspense fallback=move || view! { <Loading message="Loading entities\u{2026}"/> }>
                 {move || {
                     entities.read().as_ref().map(|result| match result {
                         Ok(entities_list) => view! {
