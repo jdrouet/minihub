@@ -1,19 +1,14 @@
-# minihub development commands
-# Install just: cargo install just
-# Run `just --list` to see all available commands.
-
-# Default recipe: run all checks
-default: check
+# minihub build recipes
 
 # Format all code
 fmt:
-    cargo fmt --all
+    cargo fmt
 
-# Check formatting (CI mode — fails on diff)
+# Check formatting without modifying files
 fmt-check:
     cargo fmt -- --check
 
-# Run clippy with strict warnings
+# Run clippy with warnings as errors
 clippy:
     cargo clippy --all-targets --all-features -- -D warnings
 
@@ -21,46 +16,39 @@ clippy:
 test:
     cargo test --all
 
-# Run tests with output shown
-test-verbose:
-    cargo test --all -- --nocapture
-
-# Run coverage (terminal summary)
+# Run coverage and show summary
 cov:
-    cargo llvm-cov --workspace
+    cargo llvm-cov
 
-# Run coverage and generate HTML report
+# Generate HTML coverage report
 cov-html:
-    cargo llvm-cov --workspace --html
-    @echo "Report: target/llvm-cov/html/index.html"
+    cargo llvm-cov --html
+    @echo "Coverage report: target/llvm-cov/html/index.html"
 
-# Run coverage and generate LCOV file
-cov-lcov:
-    cargo llvm-cov --workspace --lcov --output-path lcov.info
-
-# Run all checks (fmt + clippy + test) — use before committing
+# Run all quality checks (fmt + clippy + test)
 check: fmt-check clippy test
 
-# Build the workspace
-build:
-    cargo build --all
+# Build the Leptos dashboard WASM bundle
+build-dashboard:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Building Leptos dashboard..."
+    cd crates/adapters/adapter_dashboard_leptos
+    trunk build --release
+    echo "✓ Dashboard built to crates/adapters/adapter_dashboard_leptos/dist/"
 
-# Build in release mode
-build-release:
-    cargo build --all --release
+# Build minihubd binary
+build-minihubd:
+    cargo build --release --bin minihubd
 
-# Run the minihubd binary
-run:
-    cargo run --bin minihubd
+# Build everything (dashboard + minihubd)
+build-all: build-dashboard build-minihubd
 
 # Clean build artifacts
 clean:
     cargo clean
+    rm -rf crates/adapters/adapter_dashboard_leptos/dist
 
-# Watch for changes and run tests (requires cargo-watch)
-watch:
-    cargo watch -x 'test --all'
-
-# Check dependency tree for issues
-deps:
-    cargo tree --workspace --depth 1
+# Run minihubd with the built dashboard
+run: build-dashboard
+    MINIHUB_DASHBOARD_DIR=crates/adapters/adapter_dashboard_leptos/dist cargo run --bin minihubd

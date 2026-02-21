@@ -79,11 +79,54 @@ The only JavaScript is a ~10-line auto-generated bootstrap script that loads the
 
 ### Prerequisites
 
-- Rust stable (>= 1.75)
+- Rust stable (>= 1.85)
 - [just](https://github.com/casey/just) command runner (recommended)
 - [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) for coverage
+- [trunk](https://trunkrs.dev/) for building the WASM dashboard
 
-### Commands
+Install prerequisites:
+
+```bash
+# Install just (if not already installed)
+cargo install just
+
+# Install cargo-llvm-cov
+cargo install cargo-llvm-cov
+
+# Install trunk
+cargo install trunk
+
+# Add WASM target
+rustup target add wasm32-unknown-unknown
+```
+
+### Building
+
+```bash
+# Build the Leptos dashboard WASM bundle
+just build-dashboard
+
+# Build the minihubd binary
+just build-minihubd
+
+# Build everything (dashboard + minihubd)
+just build-all
+```
+
+### Running
+
+```bash
+# Run minihubd with the built dashboard
+just run
+
+# Or manually:
+just build-dashboard
+MINIHUB_DASHBOARD_DIR=crates/adapters/adapter_dashboard_leptos/dist cargo run --bin minihubd
+```
+
+The dashboard will be served at `http://localhost:3000/` and the API at `http://localhost:3000/api/*`.
+
+### Testing & Quality Checks
 
 ```bash
 # Format code
@@ -103,6 +146,9 @@ just cov-html
 
 # Run all checks (fmt + clippy + test)
 just check
+
+# Clean build artifacts
+just clean
 ```
 
 Or without `just`:
