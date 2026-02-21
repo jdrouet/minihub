@@ -1,16 +1,17 @@
 use leptos::prelude::*;
+use leptos_router::components::A;
 
 #[component]
 pub fn Nav() -> impl IntoView {
     view! {
         <nav>
             <ul>
-                <li><a href="/">"Home"</a></li>
-                <li><a href="/devices">"Devices"</a></li>
-                <li><a href="/entities">"Entities"</a></li>
-                <li><a href="/areas">"Areas"</a></li>
-                <li><a href="/events">"Events"</a></li>
-                <li><a href="/automations">"Automations"</a></li>
+                <li><A href="/">"Home"</A></li>
+                <li><A href="/devices">"Devices"</A></li>
+                <li><A href="/entities">"Entities"</A></li>
+                <li><A href="/areas">"Areas"</A></li>
+                <li><A href="/events">"Events"</A></li>
+                <li><A href="/automations">"Automations"</A></li>
             </ul>
         </nav>
     }

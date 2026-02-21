@@ -13,7 +13,7 @@ pub fn Areas() -> impl IntoView {
             <h1>"Areas"</h1>
             <Suspense fallback=move || view! { <p>"Loading areas…"</p> }>
                 {move || {
-                    areas.read().as_deref().map(|result| match result {
+                    areas.read().as_ref().map(|result| match result {
                         Ok(areas_list) => view! {
                             <AreaTable areas=areas_list.clone()/>
                         }.into_any(),

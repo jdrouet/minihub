@@ -13,7 +13,7 @@ pub fn Devices() -> impl IntoView {
             <h1>"Devices"</h1>
             <Suspense fallback=move || view! { <p>"Loading devices…"</p> }>
                 {move || {
-                    devices.read().as_deref().map(|result| match result {
+                    devices.read().as_ref().map(|result| match result {
                         Ok(devices_list) => view! {
                             <DeviceTable devices=devices_list.clone()/>
                         }.into_any(),
