@@ -67,7 +67,7 @@ async fn app() -> axum::Router {
         automation_service,
     );
 
-    router::build(state)
+    router::build(state, None)
 }
 
 // ---------------------------------------------------------------------------
@@ -88,161 +88,6 @@ async fn should_return_ok_when_health_check_called() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
-}
-
-// ---------------------------------------------------------------------------
-// Dashboard (SSR) pages
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn should_render_home_page() {
-    let resp = app()
-        .await
-        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(body.contains("Dashboard"));
-}
-
-#[tokio::test]
-async fn should_render_entities_page() {
-    let resp = app()
-        .await
-        .oneshot(
-            Request::builder()
-                .uri("/entities")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(body.contains("Entities"));
-}
-
-#[tokio::test]
-async fn should_render_devices_page() {
-    let resp = app()
-        .await
-        .oneshot(
-            Request::builder()
-                .uri("/devices")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(body.contains("Devices"));
-}
-
-#[tokio::test]
-async fn should_render_areas_page() {
-    let resp = app()
-        .await
-        .oneshot(
-            Request::builder()
-                .uri("/areas")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(body.contains("Areas"));
-}
-
-#[tokio::test]
-async fn should_render_events_page() {
-    let resp = app()
-        .await
-        .oneshot(
-            Request::builder()
-                .uri("/events")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(body.contains("Event Log"));
-}
-
-#[tokio::test]
-async fn should_render_automations_page() {
-    let resp = app()
-        .await
-        .oneshot(
-            Request::builder()
-                .uri("/automations")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(body.contains("Automations"));
 }
 
 // ---------------------------------------------------------------------------
@@ -523,92 +368,6 @@ async fn should_complete_area_crud_cycle() {
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard shows data after API creates it
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn should_show_entity_on_dashboard_after_api_creation() {
-    let app = app().await;
-
-    // Create device via API
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/devices")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"name":"Hub","integration":"test","unique_id":"hub_1"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let dev: serde_json::Value =
-        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    let device_id = dev["id"].as_str().unwrap();
-
-    // Create entity via API
-    app.clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/entities")
-                .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"device_id":"{device_id}","entity_id":"light.desk","friendly_name":"Desk Lamp"}}"#,
-                )))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    // Dashboard entities page should list it
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/entities")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let html = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(html.contains("Desk Lamp"));
-    assert!(html.contains("light.desk"));
-
-    // Home page should show counts
-    let resp = app
-        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    let html = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-    assert!(html.contains("Dashboard"));
-}
-
-// ---------------------------------------------------------------------------
 // API: automation CRUD cycle
 // ---------------------------------------------------------------------------
 
@@ -881,7 +640,7 @@ async fn app_with_virtual() -> axum::Router {
         automation_service,
     );
 
-    router::build(state)
+    router::build(state, None)
 }
 
 #[tokio::test]
@@ -937,66 +696,6 @@ async fn should_list_virtual_devices_via_api() {
     assert!(names.contains(&"Virtual Light"));
     assert!(names.contains(&"Virtual Sensor"));
     assert!(names.contains(&"Virtual Switch"));
-}
-
-#[tokio::test]
-async fn should_show_virtual_entities_on_dashboard() {
-    let app = app_with_virtual().await;
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/entities")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let html = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-
-    assert!(html.contains("Virtual Light"));
-    assert!(html.contains("Virtual Temperature"));
-    assert!(html.contains("Virtual Switch"));
-}
-
-#[tokio::test]
-async fn should_show_virtual_devices_on_dashboard() {
-    let app = app_with_virtual().await;
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/devices")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let html = String::from_utf8(
-        resp.into_body()
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes()
-            .to_vec(),
-    )
-    .unwrap();
-
-    assert!(html.contains("Virtual Light"));
-    assert!(html.contains("Virtual Sensor"));
-    assert!(html.contains("Virtual Switch"));
 }
 
 #[tokio::test]

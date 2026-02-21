@@ -155,7 +155,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_store,
         automation_service,
     );
-    let app = minihub_adapter_http_axum::router::build(state);
+    let dashboard_dir = config.dashboard_dir();
+    let app = minihub_adapter_http_axum::router::build(state, dashboard_dir.as_deref());
 
     let bind_addr = config.bind_addr();
     tracing::info!(addr = %bind_addr, "minihubd listening");

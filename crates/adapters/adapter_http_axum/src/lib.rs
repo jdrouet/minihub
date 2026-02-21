@@ -5,11 +5,9 @@
 //! ## Responsibilities
 //! - Serve a **REST-ish JSON API** for programmatic access
 //!   (`/api/entities`, `/api/devices`, `/api/areas`, …)
-//! - Serve a **server-side-rendered HTML dashboard** that works with
-//!   **zero JavaScript** — pure HTML forms + `<meta http-equiv="refresh">`
-//!   for live updates
+//! - Serve **static assets** (the Leptos WASM dashboard) at `/`
 //! - Map HTTP requests into application service calls (driving adapter)
-//! - Map application results into HTTP responses (JSON or HTML)
+//! - Map application results into HTTP responses (JSON)
 //!
 //! ## Dependency rule
 //! Depends on `minihub-app` (for port traits and services) and `minihub-domain`
@@ -17,7 +15,6 @@
 //! into the domain.
 
 pub mod api;
-pub mod dashboard;
 mod error;
 pub mod router;
 pub mod state;

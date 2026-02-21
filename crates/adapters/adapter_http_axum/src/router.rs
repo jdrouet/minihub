@@ -1,7 +1,10 @@
 //! Axum router assembly.
 
+use std::path::Path;
+
 use axum::Router;
 use axum::routing::get;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use minihub_app::ports::{
@@ -13,10 +16,16 @@ use crate::state::AppState;
 
 /// Build the top-level axum [`Router`].
 ///
-/// Merges API routes under `/api` and dashboard routes at `/`.
+/// Mounts API routes under `/api` and a health-check at `/health`.
 /// Includes a [`TraceLayer`] that logs each HTTP request/response at the
 /// `DEBUG` level using the `tracing` ecosystem.
-pub fn build<ER, DR, AR, EP, ES, AUR>(state: AppState<ER, DR, AR, EP, ES, AUR>) -> Router
+///
+/// If `dashboard_dir` is provided, serves static files from that directory
+/// at `/` with a fallback to `index.html` for client-side routing.
+pub fn build<ER, DR, AR, EP, ES, AUR>(
+    state: AppState<ER, DR, AR, EP, ES, AUR>,
+    dashboard_dir: Option<&Path>,
+) -> Router
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -25,12 +34,18 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    Router::new()
+    let router = Router::new()
         .route("/health", get(health_check))
         .nest("/api", crate::api::routes())
-        .merge(crate::dashboard::routes())
         .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .with_state(state);
+
+    if let Some(dir) = dashboard_dir {
+        let index = dir.join("index.html");
+        router.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(index)))
+    } else {
+        router
+    }
 }
 
 async fn health_check() -> &'static str {
@@ -201,7 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_return_ok_when_health_check_called() {
-        let app = build(test_state());
+        let app = build(test_state(), None);
 
         let response = app
             .oneshot(
@@ -214,5 +229,150 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_serve_index_html_from_dashboard_dir_at_root() {
+        // Create a temporary directory with an index.html file
+        let temp_dir = std::env::temp_dir().join("minihub_test_dashboard_root");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let index_path = temp_dir.join("index.html");
+        std::fs::write(&index_path, "<html><body>Dashboard</body></html>").unwrap();
+
+        let app = build(test_state(), Some(&temp_dir));
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("Dashboard"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[tokio::test]
+    async fn should_fallback_to_index_html_for_unknown_routes_when_dashboard_dir_set() {
+        // Create a temporary directory with an index.html file
+        let temp_dir = std::env::temp_dir().join("minihub_test_dashboard_fallback");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let index_path = temp_dir.join("index.html");
+        std::fs::write(
+            &index_path,
+            "<html><body>SPA Fallback for Client-Side Routing</body></html>",
+        )
+        .unwrap();
+
+        let app = build(test_state(), Some(&temp_dir));
+
+        // Request an unknown route that's not an API route
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/devices/123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("SPA Fallback"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[tokio::test]
+    async fn should_serve_static_files_from_dashboard_dir() {
+        // Create a temporary directory with static assets
+        let temp_dir = std::env::temp_dir().join("minihub_test_dashboard_static");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let index_path = temp_dir.join("index.html");
+        std::fs::write(&index_path, "<html>Index</html>").unwrap();
+        let css_path = temp_dir.join("style.css");
+        std::fs::write(&css_path, "body { color: red; }").unwrap();
+
+        let app = build(test_state(), Some(&temp_dir));
+
+        // Request the CSS file
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/style.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("color: red"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[tokio::test]
+    async fn should_prioritize_api_routes_over_static_fallback() {
+        // Create a temporary directory with an index.html
+        let temp_dir = std::env::temp_dir().join("minihub_test_dashboard_api_precedence");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let index_path = temp_dir.join("index.html");
+        std::fs::write(&index_path, "<html>Static</html>").unwrap();
+
+        let app = build(test_state(), Some(&temp_dir));
+
+        // Request an API route - should get JSON, not the static fallback
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/entities")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        // Verify it's JSON by checking content-type header
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok());
+        assert!(
+            content_type.is_some() && content_type.unwrap().contains("json"),
+            "API route should return JSON, not static HTML"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[tokio::test]
+    async fn should_not_serve_static_files_when_dashboard_dir_is_none() {
+        let app = build(test_state(), None);
+
+        // Request root - should get 404 when no dashboard_dir is configured
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }
