@@ -20,6 +20,8 @@ pub enum ValidationError {
     EmptyUniqueId,
     #[error("at least one action is required")]
     NoActions,
+    #[error("invalid RFC 3339 timestamp: {0}")]
+    InvalidTimestamp(String),
 }
 
 /// Returned when a lookup by identifier finds nothing.

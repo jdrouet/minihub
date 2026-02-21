@@ -14,4 +14,4 @@ pub use automation_repo::AutomationRepository;
 pub use event_bus::EventPublisher;
 pub use event_store::EventStore;
 pub use integration::{DiscoveredDevice, Integration, IntegrationContext};
-pub use storage::{AreaRepository, DeviceRepository, EntityRepository};
+pub use storage::{AreaRepository, DeviceRepository, EntityHistoryRepository, EntityRepository};
