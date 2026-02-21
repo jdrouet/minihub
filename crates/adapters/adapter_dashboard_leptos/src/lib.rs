@@ -7,6 +7,7 @@ use leptos_router::{
 pub mod api;
 mod components;
 mod pages;
+pub mod sse;
 
 use components::Nav;
 use pages::{
