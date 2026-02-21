@@ -39,14 +39,14 @@ pub fn EntityDetail() -> impl IntoView {
         });
     });
 
-    // Handler for turning on
-    let handle_turn_on = move |_| {
+    // Handler for updating entity state
+    let handle_update_state = move |new_state: EntityState| {
         let entity_id = id();
         spawn_local(async move {
             set_updating.set(true);
             set_error.set(None);
 
-            match update_entity_state(&entity_id, EntityState::On).await {
+            match update_entity_state(&entity_id, new_state).await {
                 Ok(updated) => {
                     set_entity.set(Some(updated));
                     set_updating.set(false);
@@ -59,25 +59,8 @@ pub fn EntityDetail() -> impl IntoView {
         });
     };
 
-    // Handler for turning off
-    let handle_turn_off = move |_| {
-        let entity_id = id();
-        spawn_local(async move {
-            set_updating.set(true);
-            set_error.set(None);
-
-            match update_entity_state(&entity_id, EntityState::Off).await {
-                Ok(updated) => {
-                    set_entity.set(Some(updated));
-                    set_updating.set(false);
-                }
-                Err(err) => {
-                    set_error.set(Some(err.message));
-                    set_updating.set(false);
-                }
-            }
-        });
-    };
+    let handle_turn_on = move |_| handle_update_state(EntityState::On);
+    let handle_turn_off = move |_| handle_update_state(EntityState::Off);
 
     view! {
         <div>
