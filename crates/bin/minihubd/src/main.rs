@@ -24,10 +24,11 @@ use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_mqtt::{MqttConfig, MqttIntegration};
 use minihub_adapter_storage_sqlite_sqlx::{
     Config as DbConfig, SqliteAreaRepository, SqliteAutomationRepository, SqliteDeviceRepository,
-    SqliteEntityRepository, SqliteEventStore,
+    SqliteEntityHistoryRepository, SqliteEntityRepository, SqliteEventStore,
 };
 use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
+use minihub_app::ports::storage::EntityHistoryRepository;
 use minihub_app::ports::{EventStore, Integration};
 use minihub_app::services::area_service::AreaService;
 use minihub_app::services::automation_service::AutomationService;
@@ -64,7 +65,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let device_repo = SqliteDeviceRepository::new(pool.clone());
     let area_repo = SqliteAreaRepository::new(pool.clone());
     let event_store = SqliteEventStore::new(pool.clone());
-    let automation_repo = SqliteAutomationRepository::new(pool);
+    let automation_repo = SqliteAutomationRepository::new(pool.clone());
+    let history_repo = Arc::new(SqliteEntityHistoryRepository::new(pool));
 
     // Event bus (Arc-wrapped so it can be shared with ServiceContext)
     let event_bus = Arc::new(InProcessEventBus::new(256));
@@ -77,14 +79,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let automation_service = Arc::new(AutomationService::new(automation_repo));
     let event_store = Arc::new(event_store);
 
-    // Event worker — persists events from the bus to the store
+    // Event worker — persists events from the bus to the store and records entity history
     let es = Arc::clone(&event_store);
+    let hr = Arc::clone(&history_repo);
+    let entity_svc_for_history = Arc::clone(&entity_service);
     tokio::spawn(async move {
         loop {
             match event_rx.recv().await {
                 Ok(event) => {
-                    if let Err(err) = es.store(event).await {
+                    // Persist event to store
+                    if let Err(err) = es.store(event.clone()).await {
                         tracing::warn!(%err, "failed to persist event");
+                    }
+
+                    // Record entity history for state/attribute changes
+                    if matches!(
+                        event.event_type,
+                        minihub_domain::event::EventType::StateChanged
+                            | minihub_domain::event::EventType::AttributeChanged
+                    ) {
+                        if let Some(entity_id) = event.entity_id {
+                            match entity_svc_for_history.get_entity(entity_id).await {
+                                Ok(entity) => {
+                                    let history =
+                                        minihub_domain::entity_history::EntityHistory::builder()
+                                            .entity_id(entity.id)
+                                            .state(entity.state.clone())
+                                            .attributes(entity.attributes.clone())
+                                            .recorded_at(event.timestamp)
+                                            .build();
+
+                                    if let Err(err) = hr.record(history).await {
+                                        tracing::warn!(%err, entity_id = %entity_id, "failed to record entity history");
+                                    }
+                                }
+                                Err(err) => {
+                                    tracing::warn!(%err, entity_id = %entity_id, "failed to fetch entity for history recording");
+                                }
+                            }
+                        }
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
@@ -146,6 +179,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         integration.start_background(ctx.clone()).await?;
         tracing::info!(integration = integration.name(), "BLE integration ready");
     }
+
+    // Background purge task — removes old entity history records
+    let hr_purge = Arc::clone(&history_repo);
+    let retention_days = config.history.retention_days;
+    let purge_interval_hours = config.history.purge_interval_hours;
+    tokio::spawn(async move {
+        let interval_duration =
+            std::time::Duration::from_secs(u64::from(purge_interval_hours) * 3600);
+        let mut interval = tokio::time::interval(interval_duration);
+        interval.tick().await; // First tick completes immediately
+
+        loop {
+            interval.tick().await;
+
+            let retention_secs = i64::from(retention_days) * 24 * 3600;
+            let cutoff = minihub_domain::time::now()
+                - std::time::Duration::from_secs(retention_secs.unsigned_abs());
+            match hr_purge.purge_before(cutoff).await {
+                Ok(count) => {
+                    if count > 0 {
+                        tracing::info!(count, retention_days, "purged old entity history records");
+                    } else {
+                        tracing::debug!(retention_days, "no old entity history records to purge");
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(%err, "failed to purge old entity history");
+                }
+            }
+        }
+    });
+    tracing::info!(
+        retention_days,
+        purge_interval_hours,
+        "entity history retention configured"
+    );
 
     // HTTP
     let state = AppState::from_arcs(

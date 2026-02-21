@@ -18,6 +18,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     /// Integration toggles.
     pub integrations: IntegrationsConfig,
+    /// Entity history retention settings.
+    pub history: HistoryConfig,
 }
 
 /// HTTP listener configuration.
@@ -58,6 +60,16 @@ pub struct IntegrationsConfig {
     pub mqtt: MqttIntegrationConfig,
     /// BLE integration settings (disabled by default).
     pub ble: BleIntegrationConfig,
+}
+
+/// Entity history retention settings.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct HistoryConfig {
+    /// Number of days to retain entity history (default: 30).
+    pub retention_days: u16,
+    /// Interval between purge operations, in hours (default: 24).
+    pub purge_interval_hours: u16,
 }
 
 /// MQTT integration configuration within the main config file.
@@ -162,6 +174,16 @@ impl Config {
                 self.integrations.ble.scan_duration_secs = secs;
             }
         }
+        if let Ok(val) = std::env::var("MINIHUB_HISTORY_RETENTION_DAYS") {
+            if let Ok(days) = val.parse() {
+                self.history.retention_days = days;
+            }
+        }
+        if let Ok(val) = std::env::var("MINIHUB_HISTORY_PURGE_INTERVAL_HOURS") {
+            if let Ok(hours) = val.parse() {
+                self.history.purge_interval_hours = hours;
+            }
+        }
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
@@ -249,6 +271,15 @@ impl Default for BleIntegrationConfig {
             scan_duration_secs: 10,
             update_interval_secs: 60,
             device_filter: Vec::new(),
+        }
+    }
+}
+
+impl Default for HistoryConfig {
+    fn default() -> Self {
+        Self {
+            retention_days: 30,
+            purge_interval_hours: 24,
         }
     }
 }
