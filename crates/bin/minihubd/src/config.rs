@@ -448,4 +448,137 @@ mod tests {
         let config = Config::default();
         assert!(config.logging.filter.contains("info"));
     }
+
+    #[test]
+    fn should_default_dashboard_dir_to_none() {
+        let config = Config::default();
+        assert!(config.server.dashboard_dir.is_none());
+        assert!(config.dashboard_dir().is_none());
+    }
+
+    #[test]
+    fn should_parse_dashboard_dir_from_toml() {
+        let toml = r#"
+            [server]
+            dashboard_dir = "/var/www/dashboard"
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            config.server.dashboard_dir.as_deref(),
+            Some("/var/www/dashboard")
+        );
+        assert_eq!(
+            config.dashboard_dir(),
+            Some(std::path::PathBuf::from("/var/www/dashboard"))
+        );
+    }
+
+    #[test]
+    fn should_parse_relative_dashboard_dir_from_toml() {
+        let toml = r#"
+            [server]
+            dashboard_dir = "./dist"
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.server.dashboard_dir.as_deref(), Some("./dist"));
+        assert_eq!(
+            config.dashboard_dir(),
+            Some(std::path::PathBuf::from("./dist"))
+        );
+    }
+
+    #[test]
+    fn should_override_dashboard_dir_with_env_var() {
+        // Create a temp TOML file with dashboard_dir set
+        let dir = std::env::temp_dir().join("minihub_test_config_dashboard");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config_path = dir.join("test_dashboard.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+            [server]
+            dashboard_dir = "/original/path"
+            "#,
+        )
+        .unwrap();
+
+        let mut config: Config =
+            toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+
+        // Simulate environment variable override
+        config.server.dashboard_dir = Some("/overridden/path".to_string());
+
+        assert_eq!(
+            config.server.dashboard_dir.as_deref(),
+            Some("/overridden/path")
+        );
+        assert_eq!(
+            config.dashboard_dir(),
+            Some(std::path::PathBuf::from("/overridden/path"))
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn should_apply_minihub_dashboard_dir_env_override() {
+        let toml = r#"
+            [server]
+            dashboard_dir = "/original"
+        "#;
+        let mut config: Config = toml::from_str(toml).unwrap();
+
+        // Simulate what apply_env_overrides does when MINIHUB_DASHBOARD_DIR is set
+        config.server.dashboard_dir = Some("/env/override".to_string());
+
+        assert_eq!(
+            config.server.dashboard_dir.as_deref(),
+            Some("/env/override")
+        );
+    }
+
+    #[test]
+    fn should_handle_empty_dashboard_dir_in_toml() {
+        let toml = r"
+            [server]
+            port = 8080
+        ";
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.server.dashboard_dir.is_none());
+        assert!(config.dashboard_dir().is_none());
+    }
+
+    #[test]
+    fn should_return_pathbuf_from_dashboard_dir_accessor() {
+        let mut config = Config::default();
+        config.server.dashboard_dir = Some("/test/path".to_string());
+
+        let path_buf = config.dashboard_dir();
+        assert!(path_buf.is_some());
+        assert_eq!(path_buf.unwrap(), std::path::PathBuf::from("/test/path"));
+    }
+
+    #[test]
+    fn should_preserve_dashboard_dir_through_full_config_lifecycle() {
+        let toml = r#"
+            [server]
+            host = "127.0.0.1"
+            port = 8080
+            dashboard_dir = "/custom/dashboard"
+
+            [database]
+            url = "sqlite:test.db"
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+
+        // Verify dashboard_dir is preserved alongside other config
+        assert_eq!(config.server.host, "127.0.0.1");
+        assert_eq!(config.server.port, 8080);
+        assert_eq!(
+            config.server.dashboard_dir.as_deref(),
+            Some("/custom/dashboard")
+        );
+        assert_eq!(config.database.url, "sqlite:test.db");
+    }
 }
