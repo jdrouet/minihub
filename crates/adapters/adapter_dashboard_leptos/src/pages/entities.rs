@@ -6,7 +6,7 @@ use crate::components::EntityTable;
 /// Entities page displaying all entities in a table with state badges.
 #[component]
 pub fn Entities() -> impl IntoView {
-    let entities = LocalResource::new(|| api::fetch_entities());
+    let entities = LocalResource::new(api::fetch_entities);
 
     view! {
         <div>
