@@ -97,6 +97,14 @@ pub async fn fetch_dashboard_counts() -> Result<DashboardCounts, ApiError> {
     })
 }
 
+/// Fetch a single device by ID from the API.
+pub async fn fetch_device(id: &str) -> Result<Device, ApiError> {
+    let url = format!("/api/devices/{id}");
+    let resp = check_response(Request::get(&url).send().await?).await?;
+    let device: Device = resp.json().await?;
+    Ok(device)
+}
+
 /// Fetch a single entity by ID from the API.
 pub async fn fetch_entity(id: &str) -> Result<Entity, ApiError> {
     let url = format!("/api/entities/{id}");

@@ -1,6 +1,7 @@
 mod areas;
 mod automation_detail;
 mod automations;
+mod device_detail;
 mod devices;
 mod entities;
 mod entity_detail;
@@ -11,6 +12,7 @@ mod not_found;
 pub use areas::Areas;
 pub use automation_detail::AutomationDetail;
 pub use automations::Automations;
+pub use device_detail::DeviceDetail;
 pub use devices::Devices;
 pub use entities::Entities;
 pub use entity_detail::EntityDetail;

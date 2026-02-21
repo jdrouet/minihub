@@ -11,7 +11,8 @@ pub mod sse;
 
 use components::{Nav, ToastContainer};
 use pages::{
-    Areas, AutomationDetail, Automations, Devices, Entities, EntityDetail, Events, Home, NotFound,
+    Areas, AutomationDetail, Automations, DeviceDetail, Devices, Entities, EntityDetail, Events,
+    Home, NotFound,
 };
 
 /// Root application component.
@@ -25,6 +26,7 @@ pub fn App() -> impl IntoView {
                     <Routes fallback=|| view! { <NotFound/> }>
                         <Route path=path!("/") view=Home/>
                         <Route path=path!("devices") view=Devices/>
+                        <Route path=path!("devices/:id") view=DeviceDetail/>
                         <Route path=path!("entities") view=Entities/>
                         <Route path=path!("entities/:id") view=EntityDetail/>
                         <Route path=path!("areas") view=Areas/>
