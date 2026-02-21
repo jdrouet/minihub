@@ -64,3 +64,32 @@ pub async fn fetch_dashboard_counts() -> Result<DashboardCounts, ApiError> {
         areas,
     })
 }
+
+/// Fetch a single entity by ID from the API.
+pub async fn fetch_entity(id: &str) -> Result<Entity, ApiError> {
+    let url = format!("/api/entities/{id}");
+    let resp = Request::get(&url).send().await?;
+    let entity: Entity = resp.json().await?;
+    Ok(entity)
+}
+
+/// Update entity state via PUT /api/entities/{id}/state.
+pub async fn update_entity_state(
+    id: &str,
+    state: minihub_domain::entity::EntityState,
+) -> Result<Entity, ApiError> {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct UpdateStateRequest {
+        state: minihub_domain::entity::EntityState,
+    }
+
+    let url = format!("/api/entities/{id}/state");
+    let resp = Request::put(&url)
+        .json(&UpdateStateRequest { state })?
+        .send()
+        .await?;
+    let entity: Entity = resp.json().await?;
+    Ok(entity)
+}
