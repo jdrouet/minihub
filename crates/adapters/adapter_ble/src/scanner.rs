@@ -19,6 +19,7 @@ use minihub_domain::event::{Event, EventType};
 
 use crate::error::BleError;
 use crate::parser::{self, SensorReading, ServiceUuid};
+use crate::{gatt, miflora};
 
 /// Build a [`DiscoveredDevice`] from a [`SensorReading`].
 pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevice, MiniHubError> {
@@ -56,30 +57,46 @@ pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevi
     })
 }
 
-/// Passive BLE scanner that discovers sensors and persists them in real time.
+/// The local name advertised by Mi Flora peripherals.
+const MIFLORA_LOCAL_NAME: &str = "Flower care";
+
+/// BLE scanner that discovers sensors via passive advertisements and,
+/// optionally, reads Mi Flora plant sensors via active GATT connections.
 ///
 /// Each received advertisement is immediately persisted via the
 /// [`IntegrationContext`] — there is no batching or post-scan persistence step.
+/// After each passive scan, if Mi Flora is enabled, the scanner connects to
+/// discovered Mi Flora peripherals to read sensor data.
 pub struct BleScanner<C> {
     context: C,
     scan_duration: Duration,
     interval: Duration,
     device_filter: Vec<String>,
+    miflora_enabled: bool,
+    miflora_filter: Vec<String>,
+    miflora_connect_timeout: Duration,
 }
 
 impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     /// Create a new scanner with the given context and configuration.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         context: C,
         scan_duration: Duration,
         interval: Duration,
         device_filter: Vec<String>,
+        miflora_enabled: bool,
+        miflora_filter: Vec<String>,
+        miflora_connect_timeout: Duration,
     ) -> JoinHandle<()> {
         let scanner = Self {
             context,
             scan_duration,
             interval,
             device_filter,
+            miflora_enabled,
+            miflora_filter,
+            miflora_connect_timeout,
         };
 
         tokio::spawn(scanner.run())
@@ -101,6 +118,16 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
             return true;
         }
         self.device_filter
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case(mac))
+    }
+
+    /// Check whether the given MAC address passes the Mi Flora filter.
+    fn passes_miflora_filter(&self, mac: &str) -> bool {
+        if self.miflora_filter.is_empty() {
+            return true;
+        }
+        self.miflora_filter
             .iter()
             .any(|f| f.eq_ignore_ascii_case(mac))
     }
@@ -185,6 +212,135 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
 
         central.stop_scan().await?;
 
+        if self.miflora_enabled {
+            self.read_miflora_devices(&central).await;
+        }
+
         Ok(())
+    }
+
+    /// Connect to each discovered Mi Flora peripheral and read sensor data.
+    ///
+    /// Iterates all peripherals known to the central adapter, identifies
+    /// Mi Flora devices by their local name (`"Flower care"`), applies the
+    /// MAC allowlist filter, then performs a GATT readout with a per-device
+    /// timeout. Failures on individual devices are logged and skipped.
+    async fn read_miflora_devices(&self, central: &btleplug::platform::Adapter) {
+        let peripherals = match central.peripherals().await {
+            Ok(list) => list,
+            Err(err) => {
+                tracing::warn!(%err, "failed to list peripherals for Mi Flora readout");
+                return;
+            }
+        };
+
+        for peripheral in &peripherals {
+            let Ok(Some(props)) = peripheral.properties().await else {
+                continue;
+            };
+
+            let name_matches = props
+                .local_name
+                .as_deref()
+                .is_some_and(|name| name == MIFLORA_LOCAL_NAME);
+            if !name_matches {
+                continue;
+            }
+
+            let mac = props.address.to_string();
+            if !self.passes_miflora_filter(&mac) {
+                tracing::debug!(%mac, "Mi Flora filtered out by miflora_filter");
+                continue;
+            }
+
+            tracing::debug!(%mac, "reading Mi Flora sensor via GATT");
+
+            let result =
+                tokio::time::timeout(self.miflora_connect_timeout, gatt::read_miflora(peripheral))
+                    .await;
+
+            let reading = match result {
+                Ok(Ok(reading)) => reading,
+                Ok(Err(err)) => {
+                    tracing::warn!(%err, %mac, "failed to read Mi Flora device");
+                    continue;
+                }
+                Err(_) => {
+                    tracing::warn!(%mac, "Mi Flora GATT readout timed out");
+                    continue;
+                }
+            };
+
+            match miflora::build_discovered(&reading) {
+                Ok(dd) => {
+                    if let Err(err) = self.context.persist_discovered(dd).await {
+                        tracing::warn!(%err, %mac, "failed to persist Mi Flora discovery");
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(%err, %mac, "failed to build Mi Flora discovered device");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use minihub_domain::event::Event;
+
+    #[derive(Clone)]
+    struct NoOpContext;
+
+    impl IntegrationContext for NoOpContext {
+        async fn upsert_device(
+            &self,
+            device: minihub_domain::device::Device,
+        ) -> Result<minihub_domain::device::Device, MiniHubError> {
+            Ok(device)
+        }
+
+        async fn upsert_entity(&self, entity: Entity) -> Result<Entity, MiniHubError> {
+            Ok(entity)
+        }
+
+        async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {
+            Ok(())
+        }
+    }
+
+    fn scanner_with_miflora_filter(filter: Vec<String>) -> BleScanner<NoOpContext> {
+        BleScanner {
+            context: NoOpContext,
+            scan_duration: Duration::from_secs(1),
+            interval: Duration::from_secs(1),
+            device_filter: Vec::new(),
+            miflora_enabled: true,
+            miflora_filter: filter,
+            miflora_connect_timeout: Duration::from_secs(10),
+        }
+    }
+
+    #[test]
+    fn should_accept_all_when_miflora_filter_is_empty() {
+        let scanner = scanner_with_miflora_filter(Vec::new());
+        assert!(scanner.passes_miflora_filter("C4:7C:8D:6A:12:34"));
+        assert!(scanner.passes_miflora_filter("AA:BB:CC:DD:EE:FF"));
+    }
+
+    #[test]
+    fn should_accept_matching_mac_in_miflora_filter() {
+        let scanner = scanner_with_miflora_filter(vec!["C4:7C:8D:6A:12:34".to_owned()]);
+        assert!(scanner.passes_miflora_filter("C4:7C:8D:6A:12:34"));
+        assert!(!scanner.passes_miflora_filter("AA:BB:CC:DD:EE:FF"));
+    }
+
+    #[test]
+    fn should_match_miflora_filter_case_insensitively() {
+        let scanner = scanner_with_miflora_filter(vec!["c4:7c:8d:6a:12:34".to_owned()]);
+        assert!(scanner.passes_miflora_filter("C4:7C:8D:6A:12:34"));
+        assert!(scanner.passes_miflora_filter("c4:7c:8d:6a:12:34"));
     }
 }
