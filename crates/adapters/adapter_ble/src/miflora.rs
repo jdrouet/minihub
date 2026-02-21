@@ -25,6 +25,8 @@ pub const DATA_CHAR: uuid::Uuid = uuid::Uuid::from_u128(0x0000_1a01_0000_1000_80
 pub const FIRMWARE_CHAR: uuid::Uuid =
     uuid::Uuid::from_u128(0x0000_1a02_0000_1000_8000_0080_5f9b_34fb);
 
+const MIBEACON_MIN_LEN: usize = 13;
+const MIBEACON_MAC_OFFSET: usize = 7;
 const DATA_LEN: usize = 16;
 const FIRMWARE_LEN: usize = 7;
 
@@ -59,6 +61,28 @@ pub struct MifloraReading {
     pub sensor: MifloraSensorData,
     /// Firmware info from the FIRMWARE characteristic.
     pub firmware: MifloraFirmware,
+}
+
+/// Extract the 6-byte MAC address from a `MiBeacon` `0xFE95` service data payload.
+///
+/// The `MiBeacon` protocol stores the MAC at bytes 7–12 in reverse order.
+/// On macOS, `peripheral.address()` returns a zeroed address, so this
+/// function provides a reliable cross-platform alternative.
+///
+/// # Errors
+///
+/// Returns [`BleError::PayloadParse`] when the payload is shorter than 13 bytes.
+pub fn parse_mibeacon_mac(data: &[u8]) -> Result<[u8; 6], BleError> {
+    if data.len() < MIBEACON_MIN_LEN {
+        return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
+            format: "MiBeacon",
+            expected: MIBEACON_MIN_LEN,
+            actual: data.len(),
+        }));
+    }
+
+    let raw = &data[MIBEACON_MAC_OFFSET..MIBEACON_MAC_OFFSET + 6];
+    Ok([raw[5], raw[4], raw[3], raw[2], raw[1], raw[0]])
 }
 
 /// Parse the 16-byte DATA characteristic payload (little-endian).
@@ -326,6 +350,45 @@ mod tests {
         assert!(CMD_CHAR.to_string().contains("00001a00"));
         assert!(DATA_CHAR.to_string().contains("00001a01"));
         assert!(FIRMWARE_CHAR.to_string().contains("00001a02"));
+    }
+
+    // ── MiBeacon MAC parsing ───────────────────────────────────────────
+
+    #[test]
+    fn should_parse_mibeacon_mac_from_service_data() {
+        // MiBeacon payload: 2 bytes frame ctrl, 2 bytes product id, 1 byte counter,
+        // 2 bytes padding, then 6 bytes MAC reversed
+        // MAC C4:7C:8D:6A:12:34 → reversed in payload: [0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4]
+        let data: [u8; 13] = [
+            0x71, 0x20, // frame control
+            0x98, 0x00, // product id
+            0x03, // frame counter
+            0x00, 0x00, // padding
+            0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4, // MAC reversed
+        ];
+        let mac = parse_mibeacon_mac(&data).unwrap();
+        assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6A, 0x12, 0x34]);
+    }
+
+    #[test]
+    fn should_parse_mibeacon_mac_from_longer_payload() {
+        let mut data = [0u8; 20];
+        data[7] = 0xDF;
+        data[8] = 0x0E;
+        data[9] = 0x5B;
+        data[10] = 0x38;
+        data[11] = 0xC1;
+        data[12] = 0xA4;
+        let mac = parse_mibeacon_mac(&data).unwrap();
+        assert_eq!(mac, [0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF]);
+    }
+
+    #[test]
+    fn should_reject_mibeacon_too_short() {
+        let data = [0u8; 10];
+        let err = parse_mibeacon_mac(&data).unwrap_err();
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.to_string().contains("13 bytes"));
     }
 
     // ── build_discovered ────────────────────────────────────────────────

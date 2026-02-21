@@ -34,6 +34,11 @@ fn find_characteristic(
 /// Connect to a Mi Flora peripheral, read sensor data and firmware info,
 /// and return a [`MifloraReading`].
 ///
+/// The `mac` parameter is the device's real MAC address, typically extracted
+/// from the `MiBeacon` `0xFE95` service data advertisement via
+/// [`miflora::parse_mibeacon_mac`]. This is necessary because
+/// `peripheral.address()` returns a zeroed address on macOS.
+///
 /// The connection is always closed on return, even if a read fails. The
 /// caller is responsible for applying a per-device timeout around this
 /// function.
@@ -53,10 +58,13 @@ fn find_characteristic(
 /// [`BleError::CharacteristicNotFound`] if a required characteristic is
 /// missing, or [`BleError::PayloadParse`] / [`BleError::Scan`] for
 /// read/write failures.
-pub async fn read_miflora(peripheral: &Peripheral) -> Result<MifloraReading, BleError> {
+pub async fn read_miflora(
+    peripheral: &Peripheral,
+    mac: [u8; 6],
+) -> Result<MifloraReading, BleError> {
     peripheral.connect().await.map_err(BleError::GattConnect)?;
 
-    let result = read_miflora_inner(peripheral).await;
+    let result = read_miflora_inner(peripheral, mac).await;
 
     if let Err(err) = peripheral.disconnect().await {
         tracing::warn!(%err, "failed to disconnect Mi Flora peripheral");
@@ -66,7 +74,10 @@ pub async fn read_miflora(peripheral: &Peripheral) -> Result<MifloraReading, Ble
 }
 
 /// Inner read logic, separated so the caller can always disconnect.
-async fn read_miflora_inner(peripheral: &Peripheral) -> Result<MifloraReading, BleError> {
+async fn read_miflora_inner(
+    peripheral: &Peripheral,
+    mac: [u8; 6],
+) -> Result<MifloraReading, BleError> {
     peripheral.discover_services().await?;
 
     let cmd_char = find_characteristic(peripheral, CMD_CHAR)?;
@@ -82,8 +93,6 @@ async fn read_miflora_inner(peripheral: &Peripheral) -> Result<MifloraReading, B
 
     let sensor = miflora::parse_sensor_data(&data_bytes)?;
     let firmware = miflora::parse_firmware(&firmware_bytes)?;
-
-    let mac = peripheral.address().into_inner();
 
     Ok(MifloraReading {
         mac,
