@@ -22,6 +22,7 @@
 
 mod config;
 mod error;
+pub mod gatt;
 pub mod miflora;
 pub mod parser;
 mod scanner;

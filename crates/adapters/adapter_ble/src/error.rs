@@ -17,6 +17,21 @@ pub enum BleError {
     #[error("failed to parse BLE payload")]
     PayloadParse(#[source] PayloadParseError),
 
+    /// GATT connection to a peripheral failed.
+    #[error("GATT connection failed")]
+    GattConnect(#[source] btleplug::Error),
+
+    /// Per-device GATT read timed out.
+    #[error("GATT read timed out")]
+    GattTimeout,
+
+    /// A required GATT characteristic was not found on the peripheral.
+    #[error("GATT characteristic {uuid} not found")]
+    CharacteristicNotFound {
+        /// The UUID of the missing characteristic.
+        uuid: uuid::Uuid,
+    },
+
     /// A domain-level error (validation, not-found, etc.).
     #[error("domain error")]
     Domain(#[source] MiniHubError),
@@ -123,6 +138,38 @@ mod tests {
     #[test]
     fn should_convert_scan_error_to_storage_error() {
         let err: MiniHubError = BleError::Scan(btleplug::Error::DeviceNotFound).into();
+        assert!(matches!(err, MiniHubError::Storage(_)));
+    }
+
+    #[test]
+    fn should_display_gatt_connect_error() {
+        let err = BleError::GattConnect(btleplug::Error::DeviceNotFound);
+        assert_eq!(err.to_string(), "GATT connection failed");
+    }
+
+    #[test]
+    fn should_display_gatt_timeout_error() {
+        let err = BleError::GattTimeout;
+        assert_eq!(err.to_string(), "GATT read timed out");
+    }
+
+    #[test]
+    fn should_display_characteristic_not_found_error() {
+        let uuid = uuid::Uuid::from_u128(0x0000_1a00_0000_1000_8000_0080_5f9b_34fb);
+        let err = BleError::CharacteristicNotFound { uuid };
+        assert!(err.to_string().contains("00001a00"));
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn should_convert_gatt_connect_to_storage_error() {
+        let err: MiniHubError = BleError::GattConnect(btleplug::Error::DeviceNotFound).into();
+        assert!(matches!(err, MiniHubError::Storage(_)));
+    }
+
+    #[test]
+    fn should_convert_gatt_timeout_to_storage_error() {
+        let err: MiniHubError = BleError::GattTimeout.into();
         assert!(matches!(err, MiniHubError::Storage(_)));
     }
 
