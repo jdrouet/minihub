@@ -8,16 +8,18 @@ use minihub_domain::event::Event;
 use wasm_bindgen::prelude::*;
 use web_sys::{EventSource, MessageEvent};
 
-/// Guard that closes the `EventSource` connection on drop.
+/// Guard that closes the `EventSource` connection on drop (if connected).
 pub struct SseConnection {
-    source: EventSource,
-    _on_message: Closure<dyn FnMut(MessageEvent)>,
-    _on_error: Closure<dyn FnMut(web_sys::Event)>,
+    source: Option<EventSource>,
+    _on_message: Option<Closure<dyn FnMut(MessageEvent)>>,
+    _on_error: Option<Closure<dyn FnMut(web_sys::Event)>>,
 }
 
 impl Drop for SseConnection {
     fn drop(&mut self) {
-        self.source.close();
+        if let Some(source) = &self.source {
+            source.close();
+        }
     }
 }
 
@@ -25,11 +27,26 @@ impl Drop for SseConnection {
 ///
 /// Returns a read signal that yields each incoming [`Event`] as it arrives,
 /// plus a guard that keeps the connection alive. Drop the guard to disconnect.
+///
+/// If the `EventSource` cannot be created (e.g. the endpoint is unreachable),
+/// the signal will always be `None` and the connection guard is inert.
 pub fn use_sse_events() -> (ReadSignal<Option<Event>>, SseConnection) {
     let (event_sig, set_event) = signal(None::<Event>);
 
-    let source = EventSource::new("/api/events/stream")
-        .expect("failed to create EventSource for /api/events/stream");
+    let source = match EventSource::new("/api/events/stream") {
+        Ok(s) => s,
+        Err(err) => {
+            leptos::logging::warn!("failed to create EventSource: {err:?}");
+            return (
+                event_sig,
+                SseConnection {
+                    source: None,
+                    _on_message: None,
+                    _on_error: None,
+                },
+            );
+        }
+    };
 
     let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |msg: MessageEvent| {
         if let Some(data) = msg.data().as_string() {
@@ -54,9 +71,9 @@ pub fn use_sse_events() -> (ReadSignal<Option<Event>>, SseConnection) {
         .expect("failed to add error listener to EventSource");
 
     let conn = SseConnection {
-        source,
-        _on_message: on_message,
-        _on_error: on_error,
+        source: Some(source),
+        _on_message: Some(on_message),
+        _on_error: Some(on_error),
     };
 
     (event_sig, conn)
