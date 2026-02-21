@@ -9,8 +9,8 @@ use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
 use minihub_app::ports::{
-    AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
-    EventStore,
+    AreaRepository, AutomationRepository, DeviceRepository, EntityHistoryRepository,
+    EntityRepository, EventPublisher, EventStore,
 };
 use minihub_domain::automation::{Action, Automation, Condition, Trigger};
 use minihub_domain::error::MiniHubError;
@@ -92,8 +92,8 @@ impl IntoResponse for DeleteResponse {
 }
 
 /// `GET /api/automations` — list all automations.
-pub async fn list<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn list<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
 ) -> Result<ListResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
@@ -102,14 +102,15 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let automations = state.automation_service.list_automations().await?;
     Ok(ListResponse::Ok(Json(automations)))
 }
 
 /// `GET /api/automations/:id` — get automation by ID.
-pub async fn get<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn get<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Path(id): Path<String>,
 ) -> Result<GetResponse, ApiError>
 where
@@ -119,6 +120,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let automation_id = AutomationId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
@@ -133,8 +135,8 @@ where
 }
 
 /// `POST /api/automations` — create a new automation.
-pub async fn create<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn create<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Json(req): Json<CreateAutomationRequest>,
 ) -> Result<CreateResponse, ApiError>
 where
@@ -144,6 +146,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let mut builder = Automation::builder().name(req.name).trigger(req.trigger);
 
@@ -170,8 +173,8 @@ where
 }
 
 /// `PUT /api/automations/:id` — update an existing automation.
-pub async fn update<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn update<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Path(id): Path<String>,
     Json(req): Json<UpdateAutomationRequest>,
 ) -> Result<GetResponse, ApiError>
@@ -182,6 +185,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let automation_id = AutomationId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(
@@ -217,8 +221,8 @@ where
 }
 
 /// `DELETE /api/automations/:id` — delete an automation.
-pub async fn delete<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn delete<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Path(id): Path<String>,
 ) -> Result<DeleteResponse, ApiError>
 where
@@ -228,6 +232,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let automation_id = AutomationId::from_str(&id).map_err(|_| {
         ApiError::from(MiniHubError::Validation(

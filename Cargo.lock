@@ -1208,6 +1208,7 @@ name = "minihub-adapter-http-axum"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "minihub-app",
  "minihub-domain",
  "serde",

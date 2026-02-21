@@ -7,8 +7,8 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 
 use minihub_app::ports::{
-    AreaRepository, AutomationRepository, DeviceRepository, EntityRepository, EventPublisher,
-    EventStore,
+    AreaRepository, AutomationRepository, DeviceRepository, EntityHistoryRepository,
+    EntityRepository, EventPublisher, EventStore,
 };
 use minihub_domain::event::Event;
 use minihub_domain::id::EventId;
@@ -43,8 +43,8 @@ impl IntoResponse for GetResponse {
 }
 
 /// `GET /api/events` — list recent events.
-pub async fn list<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn list<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
 ) -> Result<ListResponse, ApiError>
 where
     ER: EntityRepository + Send + Sync + 'static,
@@ -53,14 +53,15 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let events = state.event_store.get_recent(100).await?;
     Ok(ListResponse::Ok(Json(events)))
 }
 
 /// `GET /api/events/:id` — get event by ID.
-pub async fn get<ER, DR, AR, EP, ES, AUR>(
-    State(state): State<AppState<ER, DR, AR, EP, ES, AUR>>,
+pub async fn get<ER, DR, AR, EP, ES, AUR, EHR>(
+    State(state): State<AppState<ER, DR, AR, EP, ES, AUR, EHR>>,
     Path(id): Path<String>,
 ) -> Result<GetResponse, ApiError>
 where
@@ -70,6 +71,7 @@ where
     EP: EventPublisher + Send + Sync + 'static,
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
+    EHR: EntityHistoryRepository + Send + Sync + 'static,
 {
     let event_id = EventId::from_str(&id).map_err(|_| {
         ApiError::from(minihub_domain::error::MiniHubError::Validation(

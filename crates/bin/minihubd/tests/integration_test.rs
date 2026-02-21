@@ -11,7 +11,7 @@ use minihub_adapter_http_axum::router;
 use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_storage_sqlite_sqlx::{
     Config, SqliteAreaRepository, SqliteAutomationRepository, SqliteDeviceRepository,
-    SqliteEntityRepository, SqliteEventStore,
+    SqliteEntityHistoryRepository, SqliteEntityRepository, SqliteEventStore,
 };
 use minihub_adapter_virtual::VirtualIntegration;
 use minihub_app::event_bus::InProcessEventBus;
@@ -40,7 +40,8 @@ async fn app() -> axum::Router {
     let device_repo = SqliteDeviceRepository::new(pool.clone());
     let area_repo = SqliteAreaRepository::new(pool.clone());
     let event_store = SqliteEventStore::new(pool.clone());
-    let automation_repo = SqliteAutomationRepository::new(pool);
+    let automation_repo = SqliteAutomationRepository::new(pool.clone());
+    let history_repo = Arc::new(SqliteEntityHistoryRepository::new(pool));
 
     let event_bus = InProcessEventBus::new(256);
     let mut event_rx = event_bus.subscribe();
@@ -65,6 +66,7 @@ async fn app() -> axum::Router {
         area_service,
         event_store,
         automation_service,
+        history_repo,
     );
 
     router::build(state, None)
@@ -604,7 +606,8 @@ async fn app_with_virtual() -> axum::Router {
     let device_repo = SqliteDeviceRepository::new(pool.clone());
     let area_repo = SqliteAreaRepository::new(pool.clone());
     let event_store = SqliteEventStore::new(pool.clone());
-    let automation_repo = SqliteAutomationRepository::new(pool);
+    let automation_repo = SqliteAutomationRepository::new(pool.clone());
+    let history_repo = Arc::new(SqliteEntityHistoryRepository::new(pool));
 
     let event_bus = Arc::new(InProcessEventBus::new(256));
     let mut event_rx = event_bus.subscribe();
@@ -638,6 +641,7 @@ async fn app_with_virtual() -> axum::Router {
         area_service,
         event_store,
         automation_service,
+        history_repo,
     );
 
     router::build(state, None)
