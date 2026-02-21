@@ -83,12 +83,19 @@ impl Integration for BleIntegration {
         let scan_duration = Duration::from_secs(u64::from(self.config.scan_duration_secs));
         let interval = Duration::from_secs(u64::from(self.config.update_interval_secs));
         let device_filter = self.config.device_filter.clone();
+        let miflora_enabled = self.config.miflora_enabled;
+        let miflora_filter = self.config.miflora_filter.clone();
+        let miflora_connect_timeout =
+            Duration::from_secs(u64::from(self.config.miflora_connect_timeout_secs));
 
         self.scan_handle = Some(BleScanner::start(
             ctx,
             scan_duration,
             interval,
             device_filter,
+            miflora_enabled,
+            miflora_filter,
+            miflora_connect_timeout,
         ));
 
         tracing::info!(
