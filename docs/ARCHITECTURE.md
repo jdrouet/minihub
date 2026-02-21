@@ -49,6 +49,7 @@
 - `Device::new()` validates device properties
 - `Automation::evaluate()` determines if triggers are met
 - `Area::add_device()` maintains parent-child relationships
+- `EntityHistory` records time-series state/attribute snapshots for sensor data
 
 ---
 
@@ -127,14 +128,37 @@ pub trait DeviceService {
 
 ---
 
+#### `adapter_virtual`
+**Responsibilities:**
+- Built-in demo/testing integration with simulated devices
+- Provides virtual Light, Sensor, and Switch devices
+- Responds to service calls (turn on/off, toggle) with in-memory state
+- Implements the `Integration` port trait for device discovery and service call handling
+
+**Dependencies:** `minihub-app`, `minihub-domain`
+
+---
+
 #### `adapter_mqtt`
 **Responsibilities:**
-- MQTT client connection management
-- Publishes events to MQTT topics
-- Subscribes to device state changes
-- Implements `EventBus` and/or device control ports
+- MQTT client connection and reconnection (via `rumqttc`)
+- Device discovery via config topics
+- State updates via state topics
+- Service call publishing to set topics
+- Implements the `Integration` port trait
 
-**Dependencies:** `minihub-app`, `minihub-domain`, MQTT client library
+**Dependencies:** `minihub-app`, `minihub-domain`, `rumqttc`
+
+---
+
+#### `adapter_ble`
+**Responsibilities:**
+- Passive BLE scanning for sensor advertisements (via `btleplug`)
+- Decodes PVVX custom and ATC1441 advertisement formats
+- Exposes Xiaomi LYWSD03MMC sensors as minihub devices/entities (temperature, humidity, battery)
+- Implements the `Integration` port trait
+
+**Dependencies:** `minihub-app`, `minihub-domain`, `btleplug`
 
 ---
 
@@ -178,43 +202,43 @@ async fn main() -> Result<()> {
 ## Crate Dependency Graph
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   crates/bin/minihubd                   │
-│                   (Composition Root)                    │
-└──────────────────────┬──────────────────────────────────┘
-                       │ depends on all native adapters
-          ┌────────────┼────────────┬────────────┐
-          │            │            │            │
-          ▼            ▼            ▼            ▼
-┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│   adapter   │ │   adapter   │ │   adapter   │ │  more...    │
-│  http_axum  │ │storage_sqlx │ │  mqtt/ble   │ │  adapters   │
-│ (API + SSE  │ │             │ │             │ │             │
-│ + static)   │ │             │ │             │ │             │
-└──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
-       │               │               │               │
-       └───────────────┴───────┬───────┴───────────────┘
-                               │ depend on
-                               ▼
-                        ┌─────────────┐
-                        │ crates/app  │
-                        │  (Use Cases │
-                        │  & Ports)   │
-                        └──────┬──────┘
-                               │ depends on
-                               ▼
-                        ┌─────────────┐
-                        │crates/domain│
-                        │  (Domain &  │
-                        │ Foundation) │
-                        └──────┬──────┘
-                               │ shared types
-                               ▼
-                 ┌──────────────────────────┐
-                 │  adapter_dashboard_leptos │
-                 │   (WASM, built via trunk) │
-                 │   depends on domain only  │
-                 └──────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                       crates/bin/minihubd                       │
+│                       (Composition Root)                        │
+└───────────────────────────┬──────────────────────────────────────┘
+                            │ depends on all native adapters
+     ┌──────────┬───────────┼───────────┬───────────┐
+     │          │           │           │           │
+     ▼          ▼           ▼           ▼           ▼
+┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐
+│ adapter  ││ adapter  ││ adapter  ││ adapter  ││ adapter  │
+│http_axum ││storage   ││ virtual  ││  mqtt    ││  ble     │
+│(API+SSE+ ││sqlite_sqlx│          ││(rumqttc) ││(btleplug)│
+│ static)  ││          ││          ││          ││          │
+└────┬─────┘└────┬─────┘└────┬─────┘└────┬─────┘└────┬─────┘
+     │           │           │           │           │
+     └───────────┴───────────┴─────┬─────┴───────────┘
+                                   │ depend on
+                                   ▼
+                            ┌─────────────┐
+                            │ crates/app  │
+                            │  (Use Cases │
+                            │  & Ports)   │
+                            └──────┬──────┘
+                                   │ depends on
+                                   ▼
+                            ┌─────────────┐
+                            │crates/domain│
+                            │  (Domain &  │
+                            │ Foundation) │
+                            └──────┬──────┘
+                                   │ shared types
+                                   ▼
+                     ┌──────────────────────────┐
+                     │  adapter_dashboard_leptos │
+                     │   (WASM, built via trunk) │
+                     │   depends on domain only  │
+                     └──────────────────────────┘
 ```
 
 **Note:** `adapter_dashboard_leptos` is compiled separately to `wasm32-unknown-unknown` via `trunk`. It depends only on `minihub-domain` for shared API response types. It does NOT depend on `app` or any other adapter — it communicates with the server exclusively via HTTP/SSE.
@@ -502,12 +526,21 @@ async fn test_zigbee_connection() {
    - Serializes updated `Device` to JSON
    - Returns HTTP 200 with device state
 
+8. **SSE Push** (`adapter_http_axum`):
+   - Event bus broadcast triggers SSE frame on `/api/events/stream`
+   - Connected dashboard clients receive the `StateChanged` event in real time
+
+9. **Entity History** (`adapter_storage_sqlite_sqlx`):
+   - Event worker (in `minihubd`) listens for `StateChanged` events
+   - Appends an `EntityHistory` record with a snapshot of the entity state/attributes
+   - Background purge task periodically removes records older than the retention period
+
 **Crate Involvement:**
-- `adapter_dashboard_leptos` (WASM): User clicks toggle, sends API request, reactively updates UI on response
-- `adapter_http_axum`: Receives HTTP request, returns JSON response, pushes SSE event
+- `adapter_dashboard_leptos` (WASM): User clicks toggle, sends API request, SSE subscription reactively updates UI
+- `adapter_http_axum`: Receives HTTP request, returns JSON response, pushes SSE event to connected clients
 - `app`: Orchestrates the workflow via use case
-- `domain`: Provides `EntityId`, error types, validates and applies domain logic
-- `adapter_storage_sqlite_sqlx`: Persists state change to database + entity history
+- `domain`: Provides `EntityId`, `EntityHistory`, error types, validates and applies domain logic
+- `adapter_storage_sqlite_sqlx`: Persists state change to database, records entity history
 - `adapter_mqtt`: Publishes event to MQTT topic (if entity is MQTT-managed)
 
 ---
