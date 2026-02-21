@@ -5,6 +5,7 @@ use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::event::EventType;
 
 use crate::api::{fetch_entity, update_entity_state};
+use crate::components::HistoryChart;
 use crate::sse::use_sse_events;
 
 #[component]
@@ -104,6 +105,13 @@ pub fn EntityDetail() -> impl IntoView {
     let handle_turn_on = move |_| handle_update_state(EntityState::On);
     let handle_turn_off = move |_| handle_update_state(EntityState::Off);
 
+    let (chart_entity_id, set_chart_entity_id) = signal(String::new());
+
+    Effect::new(move |_| {
+        let eid = id();
+        set_chart_entity_id.set(eid);
+    });
+
     view! {
         <div>
             <h1>"Entity Detail"</h1>
@@ -193,6 +201,8 @@ pub fn EntityDetail() -> impl IntoView {
                                     </button>
                                 </div>
                             </div>
+
+                            <HistoryChart entity_id=chart_entity_id/>
                         </div>
                     }
                         .into_any()
