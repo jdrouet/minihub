@@ -89,11 +89,11 @@ minihub/
 
 *Other milestones are in `TASKS_COMPLETED.md`*
 
-### M8 — Leptos Dashboard + Entity History
+### M8 — Leptos Dashboard + Entity History ✅
 
 **Goal**: Replace the SSR askama dashboard with a Leptos CSR (client-side rendered) WASM app. Add entity history for time-series sensor data. Add SSE for real-time updates. Maintain 80% coverage.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Prerequisites**: M5 complete (working API, storage, integrations)
 
@@ -120,7 +120,7 @@ minihub/
 | M8-T13 ✅ | Leptos SSE subscription + live updates | M | M8-T12, M8-T6 | Leptos components subscribe to SSE via `EventSource` (web-sys). Entity state updates propagate reactively to widgets. Event log page shows new events without refresh. | `crates/adapters/adapter_dashboard_leptos/src/sse.rs`, modify page components |
 | M8-T14 ✅ | Sensor history chart | M | M8-T11, M8-T6 | Chart component using `plotters` (WASM canvas backend). Entity detail page shows state history chart for sensor entities. Time range selector (1h, 6h, 24h, 7d). Temperature/humidity line charts. | `crates/adapters/adapter_dashboard_leptos/src/components/chart.rs` |
 | M8-T15 ✅ | Styling + polish | M | M8-T7 | Responsive CSS (mobile-friendly). Dark nav bar, card layout, table styles, badge styles for states. Loading spinners. Error toast messages. Dark/light theme toggle (CSS-only, stored in localStorage via web-sys). | `crates/adapters/adapter_dashboard_leptos/src/styles.rs` or CSS file |
-| M8-T16 | Update docs + coverage | S | M8-T15 | Update ARCHITECTURE.md, CONTRIBUTING.md, README.md (already done in planning). Verify all quality gates pass. `cargo test --all` passes. `cargo llvm-cov` >= 80%. Leptos crate tested via `wasm-pack test` or manual browser verification. | Docs, test files |
+| M8-T16 ✅ | Update docs + coverage | S | M8-T15 | Update ARCHITECTURE.md, CONTRIBUTING.md, README.md (already done in planning). Verify all quality gates pass. `cargo test --all` passes. `cargo llvm-cov` >= 80%. Leptos crate tested via `wasm-pack test` or manual browser verification. | Docs, test files |
 
 #### Phased Approach
 
