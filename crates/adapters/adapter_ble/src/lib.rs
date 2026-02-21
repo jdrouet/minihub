@@ -1,20 +1,25 @@
 //! # minihub-adapter-ble
 //!
-//! Passive BLE adapter — scans for BLE sensor advertisements and exposes
-//! them as minihub devices and entities.
+//! BLE adapter — scans for BLE sensor advertisements and reads active
+//! GATT devices, exposing them as minihub devices and entities.
 //!
 //! ## How it works
 //!
-//! Some BLE sensors broadcast readings as service-data advertisements
-//! (no connection needed). This adapter passively scans for those
-//! advertisements and parses them into sensor entities.
+//! The adapter runs a repeating scan loop with two phases:
 //!
-//! ## Currently supported formats
+//! 1. **Passive phase** — collects service-data advertisements (no
+//!    connection needed) and parses them into sensor entities.
+//! 2. **Active GATT phase** (optional) — after the passive scan stops,
+//!    connects to discovered Mi Flora plant sensors, reads sensor data
+//!    and firmware info via GATT, then disconnects.
 //!
-//! | Format | UUID | Payload length | Endianness |
-//! |--------|------|----------------|------------|
-//! | PVVX custom | `0x181A` | 19 bytes | Little-endian |
-//! | ATC1441 original | `0x181A` | 13 bytes | Big-endian |
+//! ## Supported formats
+//!
+//! | Format | Mode | UUID | Payload | Endianness |
+//! |--------|------|------|---------|------------|
+//! | PVVX custom | Passive | `0x181A` | 19 bytes | Little-endian |
+//! | ATC1441 original | Passive | `0x181A` | 13 bytes | Big-endian |
+//! | Mi Flora (HHCCJCY01) | Active GATT | `0xFE95` | 16 + 7 bytes | Little-endian |
 //!
 //! ## Dependency rule
 //!
