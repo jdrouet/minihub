@@ -1,7 +1,10 @@
 //! Axum router assembly.
 
+use std::path::Path;
+
 use axum::Router;
 use axum::routing::get;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use minihub_app::ports::{
@@ -13,10 +16,16 @@ use crate::state::AppState;
 
 /// Build the top-level axum [`Router`].
 ///
-/// Merges API routes under `/api` and dashboard routes at `/`.
+/// Mounts API routes under `/api` and a health-check at `/health`.
 /// Includes a [`TraceLayer`] that logs each HTTP request/response at the
 /// `DEBUG` level using the `tracing` ecosystem.
-pub fn build<ER, DR, AR, EP, ES, AUR>(state: AppState<ER, DR, AR, EP, ES, AUR>) -> Router
+///
+/// If `dashboard_dir` is provided, serves static files from that directory
+/// at `/` with a fallback to `index.html` for client-side routing.
+pub fn build<ER, DR, AR, EP, ES, AUR>(
+    state: AppState<ER, DR, AR, EP, ES, AUR>,
+    dashboard_dir: Option<&Path>,
+) -> Router
 where
     ER: EntityRepository + Send + Sync + 'static,
     DR: DeviceRepository + Send + Sync + 'static,
@@ -25,12 +34,18 @@ where
     ES: EventStore + Send + Sync + 'static,
     AUR: AutomationRepository + Send + Sync + 'static,
 {
-    Router::new()
+    let router = Router::new()
         .route("/health", get(health_check))
         .nest("/api", crate::api::routes())
-        .merge(crate::dashboard::routes())
         .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .with_state(state);
+
+    if let Some(dir) = dashboard_dir {
+        let index = dir.join("index.html");
+        router.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(index)))
+    } else {
+        router
+    }
 }
 
 async fn health_check() -> &'static str {
@@ -201,7 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_return_ok_when_health_check_called() {
-        let app = build(test_state());
+        let app = build(test_state(), None);
 
         let response = app
             .oneshot(

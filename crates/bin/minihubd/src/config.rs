@@ -28,6 +28,8 @@ pub struct ServerConfig {
     pub host: String,
     /// TCP port.
     pub port: u16,
+    /// Path to the dashboard static assets directory (trunk build output).
+    pub dashboard_dir: Option<String>,
 }
 
 /// `SQLite` database configuration.
@@ -129,6 +131,9 @@ impl Config {
                 }
             }
         }
+        if let Ok(val) = std::env::var("MINIHUB_DASHBOARD_DIR") {
+            self.server.dashboard_dir = Some(val);
+        }
         if let Ok(val) = std::env::var("MINIHUB_DATABASE_URL") {
             self.database.url = val;
         }
@@ -177,6 +182,15 @@ impl Config {
     pub fn database_url(&self) -> &str {
         &self.database.url
     }
+
+    /// Return the dashboard assets directory, if configured.
+    #[must_use]
+    pub fn dashboard_dir(&self) -> Option<std::path::PathBuf> {
+        self.server
+            .dashboard_dir
+            .as_ref()
+            .map(std::path::PathBuf::from)
+    }
 }
 
 impl Default for ServerConfig {
@@ -184,6 +198,7 @@ impl Default for ServerConfig {
         Self {
             host: "0.0.0.0".to_string(),
             port: 3000,
+            dashboard_dir: None,
         }
     }
 }
