@@ -12,7 +12,7 @@ path = "src/main.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-leptos = { version = "0.8", default-features = false }
+leptos = { version = "0.8", default-features = false, features = ["csr"] }
 leptos_router = { version = "0.8", default-features = false }
 gloo-net = "0.6"
 serde = { version = "1.0", features = ["derive"] }
