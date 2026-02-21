@@ -13,7 +13,7 @@ pub fn Home() -> impl IntoView {
             <h1>"Home"</h1>
             <Suspense fallback=move || view! { <p>"Loading…"</p> }>
                 {move || {
-                    counts.read().as_deref().map(|result| match result {
+                    counts.read().as_ref().map(|result| match result {
                         Ok(DashboardCounts { entities, devices, areas }) => view! {
                             <div class="stat-grid">
                                 <StatCard label="Entities" value=*entities/>

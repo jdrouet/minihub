@@ -13,7 +13,7 @@ pub fn Entities() -> impl IntoView {
             <h1>"Entities"</h1>
             <Suspense fallback=move || view! { <p>"Loading entities…"</p> }>
                 {move || {
-                    entities.read().as_deref().map(|result| match result {
+                    entities.read().as_ref().map(|result| match result {
                         Ok(entities_list) => view! {
                             <EntityTable entities=entities_list.clone()/>
                         }.into_any(),

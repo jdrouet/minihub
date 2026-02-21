@@ -20,7 +20,7 @@ pub fn AutomationDetail() -> impl IntoView {
             <h1>"Automation Detail"</h1>
             <Suspense fallback=move || view! { <p>"Loading automation…"</p> }>
                 {move || {
-                    automation.read().as_deref().map(|result| match result {
+                    automation.read().as_ref().map(|result| match result {
                         Ok(auto) => view! {
                             <div class="automation-detail">
                                 <div class="detail-section">

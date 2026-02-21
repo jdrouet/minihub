@@ -22,7 +22,7 @@ pub fn Automations() -> impl IntoView {
             <h1>"Automations"</h1>
             <Suspense fallback=move || view! { <p>"Loading automations…"</p> }>
                 {move || {
-                    automations.read().as_deref().map(|result| match result {
+                    automations.read().as_ref().map(|result| match result {
                         Ok(automations_list) => view! {
                             <AutomationTable
                                 automations=automations_list.clone()
