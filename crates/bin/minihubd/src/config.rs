@@ -102,6 +102,12 @@ pub struct BleIntegrationConfig {
     pub update_interval_secs: u16,
     /// Optional MAC address allowlist (e.g. `["A4:C1:38:AA:BB:CC"]`).
     pub device_filter: Vec<String>,
+    /// Enable active GATT readout for Mi Flora plant sensors.
+    pub miflora_enabled: bool,
+    /// Optional MAC allowlist for Mi Flora devices.
+    pub miflora_filter: Vec<String>,
+    /// Per-device GATT connection timeout, in seconds.
+    pub miflora_connect_timeout_secs: u16,
 }
 
 impl Config {
@@ -173,6 +179,9 @@ impl Config {
             if let Ok(secs) = val.parse() {
                 self.integrations.ble.scan_duration_secs = secs;
             }
+        }
+        if let Ok(val) = std::env::var("MINIHUB_BLE_MIFLORA_ENABLED") {
+            self.integrations.ble.miflora_enabled = val == "1" || val.eq_ignore_ascii_case("true");
         }
         if let Ok(val) = std::env::var("MINIHUB_HISTORY_RETENTION_DAYS") {
             if let Ok(days) = val.parse() {
@@ -271,6 +280,9 @@ impl Default for BleIntegrationConfig {
             scan_duration_secs: 10,
             update_interval_secs: 60,
             device_filter: Vec::new(),
+            miflora_enabled: false,
+            miflora_filter: Vec::new(),
+            miflora_connect_timeout_secs: 10,
         }
     }
 }
@@ -316,6 +328,9 @@ mod tests {
         assert_eq!(config.integrations.ble.scan_duration_secs, 10);
         assert_eq!(config.integrations.ble.update_interval_secs, 60);
         assert!(config.integrations.ble.device_filter.is_empty());
+        assert!(!config.integrations.ble.miflora_enabled);
+        assert!(config.integrations.ble.miflora_filter.is_empty());
+        assert_eq!(config.integrations.ble.miflora_connect_timeout_secs, 10);
     }
 
     #[test]
@@ -354,6 +369,9 @@ mod tests {
             scan_duration_secs = 5
             update_interval_secs = 30
             device_filter = ['A4:C1:38:AA:BB:CC']
+            miflora_enabled = true
+            miflora_filter = ['C4:7C:8D:6A:XX:YY']
+            miflora_connect_timeout_secs = 15
         ";
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.server.host, "127.0.0.1");
@@ -374,6 +392,12 @@ mod tests {
             config.integrations.ble.device_filter,
             vec!["A4:C1:38:AA:BB:CC"]
         );
+        assert!(config.integrations.ble.miflora_enabled);
+        assert_eq!(
+            config.integrations.ble.miflora_filter,
+            vec!["C4:7C:8D:6A:XX:YY"]
+        );
+        assert_eq!(config.integrations.ble.miflora_connect_timeout_secs, 15);
     }
 
     #[test]
@@ -426,6 +450,38 @@ mod tests {
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.database.url, "sqlite:minihub.db?mode=rwc");
         assert!(config.integrations.virtual_enabled);
+    }
+
+    #[test]
+    fn should_default_miflora_disabled_in_partial_ble_toml() {
+        let toml = "
+            [integrations.ble]
+            enabled = true
+            scan_duration_secs = 5
+        ";
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.integrations.ble.enabled);
+        assert_eq!(config.integrations.ble.scan_duration_secs, 5);
+        assert!(!config.integrations.ble.miflora_enabled);
+        assert!(config.integrations.ble.miflora_filter.is_empty());
+        assert_eq!(config.integrations.ble.miflora_connect_timeout_secs, 10);
+    }
+
+    #[test]
+    fn should_apply_miflora_enabled_env_override() {
+        let mut config = Config::default();
+        assert!(!config.integrations.ble.miflora_enabled);
+
+        // Simulate what apply_env_overrides does for MINIHUB_BLE_MIFLORA_ENABLED
+        config.integrations.ble.miflora_enabled = "true".eq_ignore_ascii_case("true");
+        assert!(config.integrations.ble.miflora_enabled);
+
+        config.integrations.ble.miflora_enabled = "1" == "1";
+        assert!(config.integrations.ble.miflora_enabled);
+
+        config.integrations.ble.miflora_enabled =
+            "false" == "1" || "false".eq_ignore_ascii_case("true");
+        assert!(!config.integrations.ble.miflora_enabled);
     }
 
     #[test]
