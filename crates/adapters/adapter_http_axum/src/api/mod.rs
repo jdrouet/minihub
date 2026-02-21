@@ -12,6 +12,7 @@ pub mod entities;
 pub mod entity_history;
 #[allow(clippy::missing_errors_doc)]
 pub mod events;
+pub mod sse;
 
 use axum::Router;
 use axum::routing::{get, put};
@@ -81,6 +82,10 @@ where
         .route(
             "/events/{id}",
             get(events::get::<ER, DR, AR, EP, ES, AUR, EHR>),
+        )
+        .route(
+            "/events/stream",
+            get(sse::stream::<ER, DR, AR, EP, ES, AUR, EHR>),
         )
         // Automations
         .route(

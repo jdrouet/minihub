@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use minihub_app::event_bus::InProcessEventBus;
 use minihub_app::ports::{
     AreaRepository, AutomationRepository, DeviceRepository, EntityHistoryRepository,
     EntityRepository, EventPublisher, EventStore,
@@ -30,6 +31,8 @@ pub struct AppState<ER, DR, AR, EP, ES, AUR, EHR> {
     pub automation_service: Arc<AutomationService<AUR>>,
     /// Entity history repository for time-series queries.
     pub entity_history_repo: Arc<EHR>,
+    /// Event bus for real-time event subscriptions (SSE).
+    pub event_bus: Arc<InProcessEventBus>,
 }
 
 impl<ER, DR, AR, EP, ES, AUR, EHR> Clone for AppState<ER, DR, AR, EP, ES, AUR, EHR> {
@@ -41,6 +44,7 @@ impl<ER, DR, AR, EP, ES, AUR, EHR> Clone for AppState<ER, DR, AR, EP, ES, AUR, E
             event_store: Arc::clone(&self.event_store),
             automation_service: Arc::clone(&self.automation_service),
             entity_history_repo: Arc::clone(&self.entity_history_repo),
+            event_bus: Arc::clone(&self.event_bus),
         }
     }
 }
@@ -63,6 +67,7 @@ where
         event_store: ES,
         automation_service: AutomationService<AUR>,
         entity_history_repo: EHR,
+        event_bus: Arc<InProcessEventBus>,
     ) -> Self {
         Self {
             entity_service: Arc::new(entity_service),
@@ -71,6 +76,7 @@ where
             event_store: Arc::new(event_store),
             automation_service: Arc::new(automation_service),
             entity_history_repo: Arc::new(entity_history_repo),
+            event_bus,
         }
     }
 
@@ -85,6 +91,7 @@ where
         event_store: Arc<ES>,
         automation_service: Arc<AutomationService<AUR>>,
         entity_history_repo: Arc<EHR>,
+        event_bus: Arc<InProcessEventBus>,
     ) -> Self {
         Self {
             entity_service,
@@ -93,6 +100,7 @@ where
             event_store,
             automation_service,
             entity_history_repo,
+            event_bus,
         }
     }
 }

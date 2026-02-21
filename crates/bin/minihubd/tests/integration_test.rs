@@ -43,10 +43,10 @@ async fn app() -> axum::Router {
     let automation_repo = SqliteAutomationRepository::new(pool.clone());
     let history_repo = Arc::new(SqliteEntityHistoryRepository::new(pool));
 
-    let event_bus = InProcessEventBus::new(256);
+    let event_bus = Arc::new(InProcessEventBus::new(256));
     let mut event_rx = event_bus.subscribe();
 
-    let entity_service = Arc::new(EntityService::new(entity_repo, event_bus));
+    let entity_service = Arc::new(EntityService::new(entity_repo, Arc::clone(&event_bus)));
     let device_service = Arc::new(DeviceService::new(device_repo));
     let area_service = Arc::new(AreaService::new(area_repo));
     let event_store = Arc::new(event_store);
@@ -67,6 +67,7 @@ async fn app() -> axum::Router {
         event_store,
         automation_service,
         history_repo,
+        event_bus,
     );
 
     router::build(state, None)
@@ -630,7 +631,7 @@ async fn app_with_virtual() -> axum::Router {
     let ctx = ServiceContext::new(
         Arc::clone(&device_service),
         Arc::clone(&entity_service),
-        event_bus,
+        Arc::clone(&event_bus),
     );
     let mut virtual_integration = VirtualIntegration::default();
     virtual_integration.setup(&ctx).await.unwrap();
@@ -642,6 +643,7 @@ async fn app_with_virtual() -> axum::Router {
         event_store,
         automation_service,
         history_repo,
+        event_bus,
     );
 
     router::build(state, None)
