@@ -5,8 +5,10 @@ use std::future::Future;
 use minihub_domain::area::Area;
 use minihub_domain::device::Device;
 use minihub_domain::entity::Entity;
+use minihub_domain::entity_history::EntityHistory;
 use minihub_domain::error::MiniHubError;
 use minihub_domain::id::{AreaId, DeviceId, EntityId};
+use minihub_domain::time::Timestamp;
 
 /// Repository for [`Entity`] persistence.
 pub trait EntityRepository {
@@ -88,4 +90,30 @@ pub trait AreaRepository {
 
     /// Delete an area by its unique identifier.
     fn delete(&self, id: AreaId) -> impl Future<Output = Result<(), MiniHubError>> + Send;
+}
+
+/// Repository for [`EntityHistory`] persistence.
+pub trait EntityHistoryRepository {
+    /// Record a new entity history snapshot.
+    fn record(
+        &self,
+        history: EntityHistory,
+    ) -> impl Future<Output = Result<EntityHistory, MiniHubError>> + Send;
+
+    /// Find history records for a specific entity within a time range.
+    ///
+    /// Results are ordered by `recorded_at` ascending (oldest first).
+    fn find_by_entity_in_range(
+        &self,
+        entity_id: EntityId,
+        from: Timestamp,
+        to: Timestamp,
+        limit: Option<usize>,
+    ) -> impl Future<Output = Result<Vec<EntityHistory>, MiniHubError>> + Send;
+
+    /// Purge all history records older than the given timestamp.
+    fn purge_before(
+        &self,
+        before: Timestamp,
+    ) -> impl Future<Output = Result<usize, MiniHubError>> + Send;
 }
