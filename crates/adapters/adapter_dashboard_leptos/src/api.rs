@@ -1,7 +1,13 @@
 //! HTTP API client wrapping `gloo-net` for calls to `/api/*`.
 
 use gloo_net::http::Request;
-use minihub_domain::{area::Area, device::Device, entity::Entity};
+use minihub_domain::{
+    area::Area,
+    automation::Automation,
+    device::Device,
+    entity::Entity,
+    event::Event,
+};
 
 /// Error returned by API client methods.
 #[derive(Debug, Clone)]
@@ -92,4 +98,54 @@ pub async fn update_entity_state(
         .await?;
     let entity: Entity = resp.json().await?;
     Ok(entity)
+}
+
+/// Fetch all events from the API.
+pub async fn fetch_events() -> Result<Vec<Event>, ApiError> {
+    let resp = Request::get("/api/events").send().await?;
+    let events: Vec<Event> = resp.json().await?;
+    Ok(events)
+}
+
+/// Fetch all automations from the API.
+pub async fn fetch_automations() -> Result<Vec<Automation>, ApiError> {
+    let resp = Request::get("/api/automations").send().await?;
+    let automations: Vec<Automation> = resp.json().await?;
+    Ok(automations)
+}
+
+/// Fetch a single automation by ID from the API.
+pub async fn fetch_automation(id: &str) -> Result<Automation, ApiError> {
+    let url = format!("/api/automations/{id}");
+    let resp = Request::get(&url).send().await?;
+    let automation: Automation = resp.json().await?;
+    Ok(automation)
+}
+
+/// Update automation (toggle enabled state).
+pub async fn update_automation(automation: Automation) -> Result<Automation, ApiError> {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct UpdateAutomationRequest {
+        name: String,
+        enabled: bool,
+        trigger: minihub_domain::automation::Trigger,
+        conditions: Vec<minihub_domain::automation::Condition>,
+        actions: Vec<minihub_domain::automation::Action>,
+    }
+
+    let url = format!("/api/automations/{}", automation.id);
+    let resp = Request::put(&url)
+        .json(&UpdateAutomationRequest {
+            name: automation.name,
+            enabled: automation.enabled,
+            trigger: automation.trigger,
+            conditions: automation.conditions,
+            actions: automation.actions,
+        })?
+        .send()
+        .await?;
+    let updated: Automation = resp.json().await?;
+    Ok(updated)
 }
