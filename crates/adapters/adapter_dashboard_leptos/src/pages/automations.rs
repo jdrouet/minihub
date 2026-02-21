@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::api;
-use crate::components::AutomationTable;
+use crate::components::{AutomationTable, Loading};
 
 /// Automations page displaying all automations with enable/disable toggle.
 #[component]
@@ -20,7 +20,7 @@ pub fn Automations() -> impl IntoView {
     view! {
         <div>
             <h1>"Automations"</h1>
-            <Suspense fallback=move || view! { <p>"Loading automations…"</p> }>
+            <Suspense fallback=move || view! { <Loading message="Loading automations\u{2026}"/> }>
                 {move || {
                     automations.read().as_ref().map(|result| match result {
                         Ok(automations_list) => view! {

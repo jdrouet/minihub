@@ -3,6 +3,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 
 use crate::api;
+use crate::components::Loading;
 
 /// Automation detail page showing trigger, conditions, and actions.
 #[component]
@@ -18,7 +19,7 @@ pub fn AutomationDetail() -> impl IntoView {
     view! {
         <div>
             <h1>"Automation Detail"</h1>
-            <Suspense fallback=move || view! { <p>"Loading automation…"</p> }>
+            <Suspense fallback=move || view! { <Loading message="Loading automation\u{2026}"/> }>
                 {move || {
                     automation.read().as_ref().map(|result| match result {
                         Ok(auto) => view! {

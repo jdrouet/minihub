@@ -5,13 +5,15 @@ use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::event::EventType;
 
 use crate::api::{fetch_entity, update_entity_state};
-use crate::components::HistoryChart;
+use crate::components::{HistoryChart, Loading, use_toasts};
 use crate::sse::use_sse_events;
 
 #[component]
 pub fn EntityDetail() -> impl IntoView {
     let params = use_params_map();
     let id = move || params.read().get("id").unwrap_or_default();
+
+    let toasts = use_toasts();
 
     let (entity, set_entity) = signal(None::<Entity>);
     let (error, set_error) = signal(None::<String>);
@@ -82,9 +84,10 @@ pub fn EntityDetail() -> impl IntoView {
         });
     });
 
-    // Handler for updating entity state
-    let handle_update_state = move |new_state: EntityState| {
+    let update_toasts = toasts.clone();
+    let handle_update_state = Callback::new(move |new_state: EntityState| {
         let entity_id = id();
+        let t = update_toasts.clone();
         spawn_local(async move {
             set_updating.set(true);
             set_error.set(None);
@@ -95,15 +98,16 @@ pub fn EntityDetail() -> impl IntoView {
                     set_updating.set(false);
                 }
                 Err(err) => {
+                    t.push(err.message.clone());
                     set_error.set(Some(err.message));
                     set_updating.set(false);
                 }
             }
         });
-    };
+    });
 
-    let handle_turn_on = move |_| handle_update_state(EntityState::On);
-    let handle_turn_off = move |_| handle_update_state(EntityState::Off);
+    let handle_turn_on = move |_| handle_update_state.run(EntityState::On);
+    let handle_turn_off = move |_| handle_update_state.run(EntityState::Off);
 
     let (chart_entity_id, set_chart_entity_id) = signal(String::new());
 
@@ -118,7 +122,7 @@ pub fn EntityDetail() -> impl IntoView {
 
             {move || {
                 if loading.get() {
-                    view! { <p>"Loading..."</p> }.into_any()
+                    view! { <Loading/> }.into_any()
                 } else if let Some(err_msg) = error.get() {
                     view! {
                         <div class="error">
