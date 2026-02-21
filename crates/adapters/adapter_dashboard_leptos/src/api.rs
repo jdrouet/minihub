@@ -1,10 +1,11 @@
 //! HTTP API client wrapping `gloo-net` for calls to `/api/*`.
 
-use gloo_net::http::Request;
+use gloo_net::http::{Request, Response};
 use minihub_domain::{
     area::Area, automation::Automation, device::Device, entity::Entity,
     entity_history::EntityHistory, event::Event,
 };
+use serde::Deserialize;
 
 /// Error returned by API client methods.
 #[derive(Debug, Clone)]
@@ -26,6 +27,34 @@ impl From<gloo_net::Error> for ApiError {
     }
 }
 
+/// JSON error body returned by the server on non-2xx responses.
+#[derive(Deserialize)]
+struct ErrorBody {
+    error: String,
+}
+
+/// Check the HTTP response status and extract an error if non-2xx.
+async fn check_response(resp: Response) -> Result<Response, ApiError> {
+    if resp.ok() {
+        return Ok(resp);
+    }
+    let message = match resp.json::<ErrorBody>().await {
+        Ok(body) => body.error,
+        Err(_) => format!("HTTP {}", resp.status()),
+    };
+    Err(ApiError { message })
+}
+
+/// Percent-encode a query parameter value (handles `+`, `&`, `=`, spaces, etc.).
+fn encode_query_value(value: &str) -> String {
+    value
+        .replace('%', "%25")
+        .replace('+', "%2B")
+        .replace('&', "%26")
+        .replace('=', "%3D")
+        .replace(' ', "%20")
+}
+
 /// Summary counts for the home page dashboard.
 #[derive(Debug, Clone)]
 pub struct DashboardCounts {
@@ -36,21 +65,21 @@ pub struct DashboardCounts {
 
 /// Fetch all entities from the API.
 pub async fn fetch_entities() -> Result<Vec<Entity>, ApiError> {
-    let resp = Request::get("/api/entities").send().await?;
+    let resp = check_response(Request::get("/api/entities").send().await?).await?;
     let entities: Vec<Entity> = resp.json().await?;
     Ok(entities)
 }
 
 /// Fetch all devices from the API.
 pub async fn fetch_devices() -> Result<Vec<Device>, ApiError> {
-    let resp = Request::get("/api/devices").send().await?;
+    let resp = check_response(Request::get("/api/devices").send().await?).await?;
     let devices: Vec<Device> = resp.json().await?;
     Ok(devices)
 }
 
 /// Fetch all areas from the API.
 pub async fn fetch_areas() -> Result<Vec<Area>, ApiError> {
-    let resp = Request::get("/api/areas").send().await?;
+    let resp = check_response(Request::get("/api/areas").send().await?).await?;
     let areas: Vec<Area> = resp.json().await?;
     Ok(areas)
 }
@@ -71,7 +100,7 @@ pub async fn fetch_dashboard_counts() -> Result<DashboardCounts, ApiError> {
 /// Fetch a single entity by ID from the API.
 pub async fn fetch_entity(id: &str) -> Result<Entity, ApiError> {
     let url = format!("/api/entities/{id}");
-    let resp = Request::get(&url).send().await?;
+    let resp = check_response(Request::get(&url).send().await?).await?;
     let entity: Entity = resp.json().await?;
     Ok(entity)
 }
@@ -89,24 +118,27 @@ pub async fn update_entity_state(
     }
 
     let url = format!("/api/entities/{id}/state");
-    let resp = Request::put(&url)
-        .json(&UpdateStateRequest { state })?
-        .send()
-        .await?;
+    let resp = check_response(
+        Request::put(&url)
+            .json(&UpdateStateRequest { state })?
+            .send()
+            .await?,
+    )
+    .await?;
     let entity: Entity = resp.json().await?;
     Ok(entity)
 }
 
 /// Fetch all events from the API.
 pub async fn fetch_events() -> Result<Vec<Event>, ApiError> {
-    let resp = Request::get("/api/events").send().await?;
+    let resp = check_response(Request::get("/api/events").send().await?).await?;
     let events: Vec<Event> = resp.json().await?;
     Ok(events)
 }
 
 /// Fetch all automations from the API.
 pub async fn fetch_automations() -> Result<Vec<Automation>, ApiError> {
-    let resp = Request::get("/api/automations").send().await?;
+    let resp = check_response(Request::get("/api/automations").send().await?).await?;
     let automations: Vec<Automation> = resp.json().await?;
     Ok(automations)
 }
@@ -114,7 +146,7 @@ pub async fn fetch_automations() -> Result<Vec<Automation>, ApiError> {
 /// Fetch a single automation by ID from the API.
 pub async fn fetch_automation(id: &str) -> Result<Automation, ApiError> {
     let url = format!("/api/automations/{id}");
-    let resp = Request::get(&url).send().await?;
+    let resp = check_response(Request::get(&url).send().await?).await?;
     let automation: Automation = resp.json().await?;
     Ok(automation)
 }
@@ -131,16 +163,16 @@ pub async fn fetch_entity_history(
     let mut url = format!("/api/entities/{id}/history");
     let mut params = Vec::new();
     if let Some(f) = from {
-        params.push(format!("from={f}"));
+        params.push(format!("from={}", encode_query_value(f)));
     }
     if let Some(t) = to {
-        params.push(format!("to={t}"));
+        params.push(format!("to={}", encode_query_value(t)));
     }
     if !params.is_empty() {
         url.push('?');
         url.push_str(&params.join("&"));
     }
-    let resp = Request::get(&url).send().await?;
+    let resp = check_response(Request::get(&url).send().await?).await?;
     let history: Vec<EntityHistory> = resp.json().await?;
     Ok(history)
 }
@@ -159,16 +191,19 @@ pub async fn update_automation(automation: Automation) -> Result<Automation, Api
     }
 
     let url = format!("/api/automations/{}", automation.id);
-    let resp = Request::put(&url)
-        .json(&UpdateAutomationRequest {
-            name: automation.name,
-            enabled: automation.enabled,
-            trigger: automation.trigger,
-            conditions: automation.conditions,
-            actions: automation.actions,
-        })?
-        .send()
-        .await?;
+    let resp = check_response(
+        Request::put(&url)
+            .json(&UpdateAutomationRequest {
+                name: automation.name,
+                enabled: automation.enabled,
+                trigger: automation.trigger,
+                conditions: automation.conditions,
+                actions: automation.actions,
+            })?
+            .send()
+            .await?,
+    )
+    .await?;
     let updated: Automation = resp.json().await?;
     Ok(updated)
 }
