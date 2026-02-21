@@ -25,5 +25,6 @@ pub mod area;
 pub mod automation;
 pub mod device;
 pub mod entity;
+pub mod entity_history;
 pub mod event;
 pub mod service;
