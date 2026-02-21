@@ -6,10 +6,13 @@ version = 4
 name = "adapter_dashboard_leptos"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gloo-net",
  "leptos",
  "leptos_router",
  "minihub-domain",
+ "plotters",
+ "plotters-canvas",
  "serde",
  "serde_json",
  "uuid",
@@ -163,8 +166,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fac4744fb15ae8337dc853fee7fb3f4e48c0fbaa23d0afe49c447b4fab126118"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -1098,6 +1103,37 @@ name = "pin-project-lite"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b3cff922bd51709b605d9ead9aa71031d81447142d828eb4a6eba76fe619f9b"
+
+[[package]]
+name = "plotters"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aeb6f403d7a4911efb1e33402027fc44f29b5bf6def3effcc22d7bb75f2b747"
+dependencies = [
+ "chrono",
+ "num-traits",
+ "plotters-backend",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "plotters-backend"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df42e13c12958a16b3f7f4386b9ab1f3e7933914ecea48da7139435263a4172a"
+
+[[package]]
+name = "plotters-canvas"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9126f053e70c9a2f2dd6998912a3536071e909fd37bde74b671402bfa441fc00"
+dependencies = [
+ "js-sys",
+ "plotters-backend",
+ "wasm-bindgen",
+ "web-sys",
+]
 
 [[package]]
 name = "potential_utf"
