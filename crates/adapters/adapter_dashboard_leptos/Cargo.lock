@@ -12,6 +12,7 @@ dependencies = [
  "minihub-domain",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
