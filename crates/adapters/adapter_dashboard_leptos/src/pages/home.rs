@@ -6,7 +6,7 @@ use crate::components::StatCard;
 /// Home page displaying entity, device, and area counts.
 #[component]
 pub fn Home() -> impl IntoView {
-    let counts = LocalResource::new(|| api::fetch_dashboard_counts());
+    let counts = LocalResource::new(api::fetch_dashboard_counts);
 
     view! {
         <div>

@@ -6,7 +6,7 @@ use crate::components::DeviceTable;
 /// Devices page displaying all devices in a table.
 #[component]
 pub fn Devices() -> impl IntoView {
-    let devices = LocalResource::new(|| api::fetch_devices());
+    let devices = LocalResource::new(api::fetch_devices);
 
     view! {
         <div>
