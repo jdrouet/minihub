@@ -1,6 +1,6 @@
 [package]
 name = "minihub-adapter-ble"
-description = "Passive BLE adapter — scans for BLE sensor advertisements and exposes them as minihub entities."
+description = "BLE adapter — scans for BLE sensor advertisements and reads Mi Flora plant sensors via GATT."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
