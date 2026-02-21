@@ -2,8 +2,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_params_map;
 use minihub_domain::entity::{Entity, EntityState};
+use minihub_domain::event::EventType;
 
 use crate::api::{fetch_entity, update_entity_state};
+use crate::sse::use_sse_events;
 
 #[component]
 pub fn EntityDetail() -> impl IntoView {
@@ -34,6 +36,46 @@ pub fn EntityDetail() -> impl IntoView {
                 Err(err) => {
                     set_error.set(Some(err.message));
                     set_loading.set(false);
+                }
+            }
+        });
+    });
+
+    // Subscribe to SSE and re-fetch entity when a relevant event arrives
+    let (sse_event, _sse_conn) = use_sse_events();
+
+    Effect::new(move |_| {
+        let Some(event) = sse_event.get() else {
+            return;
+        };
+
+        let is_relevant = matches!(
+            event.event_type,
+            EventType::StateChanged | EventType::AttributeChanged
+        );
+        if !is_relevant {
+            return;
+        }
+
+        let current_entity = entity.get();
+        let Some(event_entity_id) = &event.entity_id else {
+            return;
+        };
+
+        if let Some(ref current) = current_entity {
+            if current.id != *event_entity_id {
+                return;
+            }
+        } else {
+            return;
+        }
+
+        let entity_id = id();
+        spawn_local(async move {
+            match fetch_entity(&entity_id).await {
+                Ok(updated) => set_entity.set(Some(updated)),
+                Err(err) => {
+                    leptos::logging::warn!("SSE re-fetch failed: {}", err.message);
                 }
             }
         });

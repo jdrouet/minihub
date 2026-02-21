@@ -213,6 +213,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn test_state() -> (
         AppState<
             StubEntityRepo,
@@ -256,7 +257,7 @@ mod tests {
             Some(EntityId::new()),
             serde_json::json!({"from": "off", "to": "on"}),
         );
-        let event_id = test_event.id.clone();
+        let event_id = test_event.id;
 
         event_bus.publish(test_event).await.unwrap();
 
