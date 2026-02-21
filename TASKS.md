@@ -20,7 +20,8 @@
   - [M5 — Polish & Harden ✅](#m5--polish--harden-)
   - [M6 — MQTT Integration (Stretch) ✅](#m6--mqtt-integration-stretch-)
   - [M7 — Passive BLE Integration ✅](#m7--passive-ble-integration-)
-  - [M8 — Leptos Dashboard + Entity History](#m8--leptos-dashboard--entity-history)
+  - [M8 — Leptos Dashboard + Entity History ✅](#m8--leptos-dashboard--entity-history)
+  - [M9 — Mi Flora BLE Integration](#m9--mi-flora-ble-integration)
 - [Task Dependencies Graph](#task-dependencies-graph)
 - [Glossary](#glossary)
 
@@ -69,68 +70,84 @@ minihub/
 
 ---
 
-## Coverage Targets
-
-| Milestone | Target Coverage | Rationale |
-|-----------|----------------|-----------|
-| M0 | 0% | Scaffold only, no implementation |
-| M1 | 40% | Domain and application logic with unit tests |
-| M2 | 60% | Add integration tests for HTTP and storage |
-| M3 | 70% | Event system and automation engine tests |
-| M4 | 70% | Virtual integration tests |
-| M5 | 80% | Comprehensive testing, production-ready |
-| M6 | 80% | Maintain coverage with MQTT tests |
-| M7 | 80% | Maintain coverage with BLE tests |
-| M8 | 80% | Maintain coverage; Leptos WASM crate tested separately via browser/wasm-pack |
-
----
-
 ## Milestones
 
 *Other milestones are in `TASKS_COMPLETED.md`*
 
-### M8 — Leptos Dashboard + Entity History ✅
+### M9 — Mi Flora BLE Integration
 
-**Goal**: Replace the SSR askama dashboard with a Leptos CSR (client-side rendered) WASM app. Add entity history for time-series sensor data. Add SSE for real-time updates. Maintain 80% coverage.
+**Goal**: Add support for Xiaomi Mi Flora (HHCCJCY01) plant sensors to the existing BLE adapter. Mi Flora devices require active GATT connections (connect → write command → read data → disconnect), unlike the passive advertisement parsing used for PVVX/ATC1441 sensors. Maintain 80% coverage.
 
-**Status**: Complete
+**Status**: Not started
 
-**Prerequisites**: M5 complete (working API, storage, integrations)
+**Prerequisites**: M7 complete (working BLE adapter with passive scanning)
 
-**Deliverables**: Leptos WASM dashboard served as static assets, entity history with time-range queries, SSE real-time push, sensor history charts.
+**Deliverables**: Mi Flora GATT readout integrated into the BLE scan loop, new parser module for Mi Flora payloads, configuration for enabling/filtering Mi Flora devices.
 
-**Key ADRs**: [ADR-011](docs/DECISIONS.md#adr-011-leptos-wasm-dashboard) (Leptos), [ADR-012](docs/DECISIONS.md#adr-012-entity-history-for-time-series-sensor-data) (Entity History)
+**Why extend `adapter_ble` instead of a new crate**: Both use `btleplug` and share the single host BLE adapter. A separate crate would cause adapter contention. The existing scanner already discovers Mi Flora peripherals during scans — they just need to be connected to and read.
+
+#### Mi Flora BLE Protocol Reference
+
+The device advertises as `"Flower care"` with service UUID `0xFE95`.
+
+| Characteristic | UUID | Mode | Purpose |
+|----------------|------|------|---------|
+| CMD | `00001a00-0000-1000-8000-00805f9b34fb` | Write | Activate sensor mode (write `[0xa0, 0x1f]`) |
+| DATA | `00001a01-0000-1000-8000-00805f9b34fb` | Read | 16-byte sensor payload |
+| FIRMWARE | `00001a02-0000-1000-8000-00805f9b34fb` | Read | 7-byte battery + firmware version |
+
+**DATA payload (16 bytes, little-endian)**:
+
+| Bytes | Type | Field | Example |
+|-------|------|-------|---------|
+| 0–1 | i16 LE (×0.1 °C) | Temperature | `0x00C9` → 20.1 °C |
+| 2 | — | Padding | — |
+| 3–6 | u32 LE (lux) | Light | `0x000141D2` → 82 386 lux |
+| 7 | u8 (%) | Moisture | `0x38` → 56 % |
+| 8–9 | u16 LE (µS/cm) | Conductivity | `0x0619` → 1 561 µS/cm |
+| 10–15 | — | Reserved | — |
+
+**FIRMWARE payload (7 bytes)**:
+
+| Bytes | Type | Field | Example |
+|-------|------|-------|---------|
+| 0 | u8 (%) | Battery level | `0x63` → 99 % |
+| 1 | — | Separator | — |
+| 2–6 | ASCII | Firmware version | `"3.1.8"` |
+
+#### Domain Model
+
+Each Mi Flora device produces:
+
+- **Device**: name=`"Mi Flora {MAC}"`, manufacturer=`"Xiaomi"`, model=`"HHCCJCY01"`, integration=`"ble"`, unique_id=`"{MAC}"`
+- **Entity**: entity_id=`"sensor.miflora_{mac_slug}"`, state=`On`, attributes: `temperature` (Float, °C), `light` (Int, lux), `moisture` (Int, %), `conductivity` (Int, µS/cm), `battery_level` (Int, %), `firmware` (String)
+
+#### Architecture
+
+The existing scanner loop runs: passive scan → sleep → repeat. Mi Flora adds a GATT phase after each passive scan completes:
+
+1. **Passive phase** (unchanged): collect advertisement-based readings (PVVX/ATC1441)
+2. **GATT phase** (new): after `stop_scan()`, iterate discovered peripherals, identify Mi Flora devices by local name `"Flower care"`, connect via GATT, write CMD, read DATA + FIRMWARE, disconnect, persist via `IntegrationContext`
+
+Each Mi Flora device connection is wrapped in a per-device timeout so one unresponsive device cannot block the entire scan cycle. A disconnect guard ensures the peripheral is always disconnected even on read errors.
 
 #### Tasks
 
 | Task ID | Description | Effort | Dependencies | DoD | Key Files |
 |---------|-------------|--------|--------------|-----|-----------|
-| M8-T1 | Strip SSR dashboard from adapter_http_axum | M | None | Remove `dashboard/` module (all handlers + templates). Remove askama dependency. Remove all `.html` template files. API routes (`/api/*`) and health check unchanged. Static file serving added at `/` for future WASM assets. `cargo check --all` passes. All API tests still pass. | `crates/adapters/adapter_http_axum/src/dashboard/` (delete), `crates/adapters/adapter_http_axum/src/router.rs`, `crates/adapters/adapter_http_axum/Cargo.toml` |
-| M8-T2 | Scaffold adapter_dashboard_leptos crate | M | M8-T1 | New crate outside workspace (WASM target). `Cargo.toml` with leptos, leptos_router, gloo-net, minihub-domain deps. `index.html` for trunk. `trunk build` produces working WASM bundle. Basic "Hello minihub" page renders in browser. | `crates/adapters/adapter_dashboard_leptos/Cargo.toml`, `crates/adapters/adapter_dashboard_leptos/src/main.rs`, `crates/adapters/adapter_dashboard_leptos/index.html`, `crates/adapters/adapter_dashboard_leptos/Trunk.toml` |
-| M8-T3 | Leptos app shell + routing | S | M8-T2 | Leptos router with routes: `/` (home), `/devices`, `/entities`, `/entities/{id}`, `/areas`, `/events`, `/automations`, `/automations/{id}`. Nav component with links. 404 fallback page. Client-side navigation works without full reloads. | `crates/adapters/adapter_dashboard_leptos/src/app.rs`, `crates/adapters/adapter_dashboard_leptos/src/components/nav.rs` |
-| M8-T4 | Home page + API client | M | M8-T3 | API client module wrapping `gloo-net` calls to `/api/*`. Home page fetches entity count, device count, area count and displays stat cards. Loading and error states handled. | `crates/adapters/adapter_dashboard_leptos/src/api.rs`, `crates/adapters/adapter_dashboard_leptos/src/pages/home.rs`, `crates/adapters/adapter_dashboard_leptos/src/components/stat_card.rs` |
-| M8-T5 | Device + entity list pages | M | M8-T4 | Device list page fetches and displays all devices in a table. Entity list page fetches and displays all entities with state badges (on/off/unavailable). Links to detail pages. | `crates/adapters/adapter_dashboard_leptos/src/pages/devices.rs`, `crates/adapters/adapter_dashboard_leptos/src/pages/entities.rs` |
-| M8-T6 | Entity detail page + state control | M | M8-T5 | Entity detail page with state, attributes, timestamps. Turn on/off buttons call `PUT /api/entities/{id}/state`. UI reactively updates on successful response. | `crates/adapters/adapter_dashboard_leptos/src/pages/entity_detail.rs` |
-| M8-T7 | Area, event, automation pages | M | M8-T5 | Area list page. Event log page (recent events, paginated). Automation list page with enable/disable toggle. Automation detail page with trigger/conditions/actions display. | `crates/adapters/adapter_dashboard_leptos/src/pages/areas.rs`, `crates/adapters/adapter_dashboard_leptos/src/pages/events.rs`, `crates/adapters/adapter_dashboard_leptos/src/pages/automations.rs` |
-| M8-T8 | Wire WASM assets into minihubd | S | M8-T7 | `minihubd` serves `dist/` directory (trunk output) as static files at `/`. Fallback to `index.html` for client-side routing. API at `/api/*` takes precedence. `just build-dashboard` recipe added to Justfile. Update README with build instructions. | `crates/bin/minihubd/src/main.rs`, `crates/adapters/adapter_http_axum/src/router.rs`, `Justfile` |
-| M8-T9 ✅ | EntityHistory domain + port + storage | M | None | `EntityHistory` struct in domain (id, entity_id, state, attributes, recorded_at). `EntityHistoryRepository` port trait with `record`, `find_by_entity_in_range`, `purge_before`. SQLite implementation with migration. Index on `(entity_id, recorded_at)`. Unit + integration tests. | `crates/domain/src/entity_history.rs`, `crates/app/src/ports/entity_history_repo.rs`, `crates/adapters/adapter_storage_sqlite_sqlx/src/entity_history_repo.rs`, `crates/adapters/adapter_storage_sqlite_sqlx/migrations/` |
-| M8-T10 ✅ | Wire history recording to event bus | S | M8-T9 | Event worker (in minihubd main) listens for `StateChanged` / `AttributeChanged` events and appends `EntityHistory` records. Configurable retention (default: 30 days). Background purge task runs periodically. | `crates/bin/minihubd/src/main.rs` (modify event worker) |
-| M8-T11 ✅ | History API endpoint | S | M8-T10 | `GET /api/entities/{id}/history?from=&to=&limit=` returns JSON array of history records. Defaults: last 24 hours, limit 1000. | `crates/adapters/adapter_http_axum/src/api/entity_history.rs` |
-| M8-T12 ✅ | SSE endpoint for real-time updates | M | None | `GET /api/events/stream` returns SSE stream. Subscribes to event bus broadcast channel. Sends JSON-encoded events as SSE `data:` frames. Handles client disconnect gracefully. | `crates/adapters/adapter_http_axum/src/api/sse.rs` |
-| M8-T13 ✅ | Leptos SSE subscription + live updates | M | M8-T12, M8-T6 | Leptos components subscribe to SSE via `EventSource` (web-sys). Entity state updates propagate reactively to widgets. Event log page shows new events without refresh. | `crates/adapters/adapter_dashboard_leptos/src/sse.rs`, modify page components |
-| M8-T14 ✅ | Sensor history chart | M | M8-T11, M8-T6 | Chart component using `plotters` (WASM canvas backend). Entity detail page shows state history chart for sensor entities. Time range selector (1h, 6h, 24h, 7d). Temperature/humidity line charts. | `crates/adapters/adapter_dashboard_leptos/src/components/chart.rs` |
-| M8-T15 ✅ | Styling + polish | M | M8-T7 | Responsive CSS (mobile-friendly). Dark nav bar, card layout, table styles, badge styles for states. Loading spinners. Error toast messages. Dark/light theme toggle (CSS-only, stored in localStorage via web-sys). | `crates/adapters/adapter_dashboard_leptos/src/styles.rs` or CSS file |
-| M8-T16 ✅ | Update docs + coverage | S | M8-T15 | Update ARCHITECTURE.md, CONTRIBUTING.md, README.md (already done in planning). Verify all quality gates pass. `cargo test --all` passes. `cargo llvm-cov` >= 80%. Leptos crate tested via `wasm-pack test` or manual browser verification. | Docs, test files |
+| M9-T1 | Mi Flora payload parsers | M | None | New `miflora.rs` module in `adapter_ble` with: `MifloraReading` struct (temperature, light, moisture, conductivity, battery_level, firmware_version fields). Pure parser functions `parse_sensor_data(&[u8]) -> Result<MifloraSensorData>` for the 16-byte DATA payload and `parse_firmware(&[u8]) -> Result<MifloraFirmware>` for the 7-byte FIRMWARE payload. GATT characteristic UUID constants (`CMD_CHAR`, `DATA_CHAR`, `FIRMWARE_CHAR`). `build_discovered(reading: &MifloraReading) -> Result<DiscoveredDevice>` to map a reading into domain Device + Entity. Register `mod miflora` in `lib.rs`. Unit tests: positive temperature, negative temperature, zero values, max lux, moisture boundary, conductivity, firmware version parsing, wrong payload lengths, device building with correct entity_id/attributes. ~12 tests. All existing tests still pass. `just check` passes. | `crates/adapters/adapter_ble/src/miflora.rs` (new), `crates/adapters/adapter_ble/src/lib.rs` |
+| M9-T2 | GATT connection helper + error variants | M | M9-T1 | New `gatt.rs` module in `adapter_ble` with async GATT wrapper functions using `btleplug`: `read_miflora(peripheral) -> Result<MifloraReading>` that connects, discovers services, finds characteristics by UUID, writes `[0xa0, 0x1f]` to CMD, reads DATA + FIRMWARE, disconnects, returns parsed `MifloraReading`. Helper `find_characteristic(peripheral, uuid) -> Result<Characteristic>`. Disconnect guard pattern: always disconnect in a drop/finally path even on read errors. New error variants in `error.rs`: `BleError::GattConnect` (connection failed), `BleError::GattTimeout` (per-device timeout expired), `BleError::CharacteristicNotFound { uuid }` (GATT char missing). `PayloadParseError::MifloraWrongLength { expected, actual }` variant. Register `mod gatt` in `lib.rs`. Unit tests for error display strings and `MiniHubError` conversion. ~5 tests. `just check` passes. | `crates/adapters/adapter_ble/src/gatt.rs` (new), `crates/adapters/adapter_ble/src/error.rs`, `crates/adapters/adapter_ble/src/lib.rs` |
+| M9-T3 | Mi Flora configuration | S | None | Extend `BleConfig` in `adapter_ble/src/config.rs` with: `miflora_enabled: bool` (default `false`), `miflora_filter: Vec<String>` (MAC allowlist, default empty = accept all), `miflora_connect_timeout_secs: u16` (default `10`). Extend `BleIntegrationConfig` in `crates/bin/minihubd/src/config.rs` with matching fields. Add env var override `MINIHUB_BLE_MIFLORA_ENABLED` in `apply_env_overrides()`. Add `ServiceUuid::MIFLORA` (`0xFE95`) to `parser.rs` and include it in `ServiceUuid::all()` so the scan filter picks up Mi Flora advertisements. Update `minihub.toml.example` with commented Mi Flora config block. Unit tests: config defaults (miflora disabled), TOML deserialization with miflora fields, partial TOML with defaults, env override for miflora_enabled. ~6 tests. `just check` passes. | `crates/adapters/adapter_ble/src/config.rs`, `crates/adapters/adapter_ble/src/parser.rs`, `crates/bin/minihubd/src/config.rs`, `minihub.toml.example` |
+| M9-T4 | Integrate Mi Flora GATT readout into scanner | M | M9-T1, M9-T2, M9-T3 | Extend `BleScanner` struct with `miflora_enabled: bool`, `miflora_filter: Vec<String>`, `miflora_connect_timeout: Duration` fields. Modify `BleScanner::start()` to accept the new config and pass it through. In `iterate()`, after `central.stop_scan().await`, if `miflora_enabled`, call new method `read_miflora_devices(&central)`. This method: lists peripherals, checks each peripheral's local name for `"Flower care"`, applies `miflora_filter` (MAC allowlist), calls `gatt::read_miflora()` with a `tokio::time::timeout` wrapper, persists via `self.context.persist_discovered()`, logs warnings on individual device failures but continues to next device. Wire the new config fields from `BleIntegration::start_background()` through to `BleScanner::start()`. Unit tests: `passes_miflora_filter` logic (empty filter accepts all, non-empty filter matches case-insensitively). ~3 tests. `just check` passes. | `crates/adapters/adapter_ble/src/scanner.rs`, `crates/adapters/adapter_ble/src/lib.rs` |
+| M9-T5 | Update docs + verify quality gates | S | M9-T4 | Update `adapter_ble` crate-level doc comment in `lib.rs` to add Mi Flora to the supported formats table (active GATT, UUID `0xFE95`). Update `Cargo.toml` description to mention Mi Flora. Verify: `just check` passes (fmt + clippy + tests). `just cov` >= 80%. All existing BLE tests still pass. | `crates/adapters/adapter_ble/src/lib.rs`, `crates/adapters/adapter_ble/Cargo.toml` |
 
-#### Phased Approach
+#### Key Design Decisions
 
-**Phase A (M8-T1 → M8-T8):** Strip SSR, scaffold Leptos, rebuild all pages, wire into minihubd. At this point the dashboard is functionally equivalent to the old SSR version but reactive.
-
-**Phase B (M8-T9 → M8-T11):** Entity history domain + storage + API. Backend work, no UI changes yet.
-
-**Phase C (M8-T12 → M8-T14):** Real-time updates + sensor charts. The dashboard becomes significantly better than the SSR version.
-
-**Phase D (M8-T15 → M8-T16):** Polish and docs.
+- **Disabled by default** (`miflora_enabled: false`) — zero behavior change for existing users
+- **Sequential GATT after passive scan** — avoids interleaving passive events with active connections; the passive scan must be stopped before connecting to peripherals
+- **Per-device timeout** (`miflora_connect_timeout_secs`) — one unresponsive Mi Flora cannot block the entire scan cycle
+- **Separate MAC filter** (`miflora_filter`) — independent from `device_filter` since they target different device types
+- **Disconnect guard** — always disconnect even on read errors, preventing leaked BLE connections
 
 ---
 
@@ -145,6 +162,7 @@ M0 (Scaffold)
                      └─> M5 (Polish)
                           ├─> M6 (MQTT)
                           ├─> M7 (BLE)
+                          │    └─> M9 (Mi Flora BLE)
                           └─> M8 (Leptos Dashboard + Entity History)
 ```
 
