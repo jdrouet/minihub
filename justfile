@@ -30,12 +30,7 @@ check: fmt-check clippy test
 
 # Build the Leptos dashboard WASM bundle
 build-dashboard:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "Building Leptos dashboard..."
-    cd crates/adapters/adapter_dashboard_leptos
-    trunk build --release
-    echo "✓ Dashboard built to crates/adapters/adapter_dashboard_leptos/dist/"
+    cd crates/adapters/adapter_dashboard_leptos && trunk build --release
 
 # Build minihubd binary
 build-minihubd:
