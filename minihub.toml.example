@@ -5,7 +5,8 @@
 #   MINIHUB_HOST, MINIHUB_PORT, MINIHUB_BIND,
 #   MINIHUB_DATABASE_URL, MINIHUB_LOG, RUST_LOG,
 #   MINIHUB_MQTT_ENABLED, MINIHUB_MQTT_BROKER_HOST, MINIHUB_MQTT_BROKER_PORT,
-#   MINIHUB_BLE_ENABLED, MINIHUB_BLE_SCAN_DURATION_SECS
+#   MINIHUB_BLE_ENABLED, MINIHUB_BLE_SCAN_DURATION_SECS,
+#   MINIHUB_BLE_MIFLORA_ENABLED
 
 [server]
 host = "0.0.0.0"
@@ -33,6 +34,10 @@ enabled = false
 scan_duration_secs = 10
 update_interval_secs = 60
 device_filter = []
+# Mi Flora (HHCCJCY01) plant sensor support — requires active GATT connections
+# miflora_enabled = false
+# miflora_filter = []              # MAC allowlist, empty = accept all
+# miflora_connect_timeout_secs = 10
 
 [dashboard.atc_thresholds]
 temp_warning_low = 18.0

@@ -173,6 +173,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             scan_duration_secs: config.integrations.ble.scan_duration_secs,
             update_interval_secs: config.integrations.ble.update_interval_secs,
             device_filter: config.integrations.ble.device_filter.clone(),
+            miflora_enabled: config.integrations.ble.miflora_enabled,
+            miflora_filter: config.integrations.ble.miflora_filter.clone(),
+            miflora_connect_timeout_secs: config.integrations.ble.miflora_connect_timeout_secs,
         };
         let mut integration = BleIntegration::new(ble_config);
         integration.setup(&ctx).await?;

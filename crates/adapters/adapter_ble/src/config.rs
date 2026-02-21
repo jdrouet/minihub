@@ -14,6 +14,14 @@ pub struct BleConfig {
     ///
     /// When empty, all detected LYWSD03MMC sensors are accepted.
     pub device_filter: Vec<String>,
+    /// Enable active GATT readout for Mi Flora plant sensors.
+    pub miflora_enabled: bool,
+    /// Optional MAC allowlist for Mi Flora devices.
+    ///
+    /// When empty, all detected Mi Flora sensors are accepted.
+    pub miflora_filter: Vec<String>,
+    /// Per-device GATT connection timeout, in seconds.
+    pub miflora_connect_timeout_secs: u16,
 }
 
 impl Default for BleConfig {
@@ -22,6 +30,9 @@ impl Default for BleConfig {
             scan_duration_secs: 10,
             update_interval_secs: 60,
             device_filter: Vec::new(),
+            miflora_enabled: false,
+            miflora_filter: Vec::new(),
+            miflora_connect_timeout_secs: 10,
         }
     }
 }
@@ -36,6 +47,9 @@ mod tests {
         assert_eq!(config.scan_duration_secs, 10);
         assert_eq!(config.update_interval_secs, 60);
         assert!(config.device_filter.is_empty());
+        assert!(!config.miflora_enabled);
+        assert!(config.miflora_filter.is_empty());
+        assert_eq!(config.miflora_connect_timeout_secs, 10);
     }
 
     #[test]
@@ -53,17 +67,34 @@ mod tests {
     }
 
     #[test]
+    fn should_deserialize_miflora_fields_from_toml() {
+        let toml = r#"
+            miflora_enabled = true
+            miflora_filter = ["C4:7C:8D:6A:XX:YY"]
+            miflora_connect_timeout_secs = 15
+        "#;
+        let config: BleConfig = toml::from_str(toml).unwrap();
+        assert!(config.miflora_enabled);
+        assert_eq!(config.miflora_filter, vec!["C4:7C:8D:6A:XX:YY"]);
+        assert_eq!(config.miflora_connect_timeout_secs, 15);
+    }
+
+    #[test]
     fn should_use_defaults_for_missing_fields() {
         let toml = r"scan_duration_secs = 5";
         let config: BleConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.scan_duration_secs, 5);
         assert_eq!(config.update_interval_secs, 60);
         assert!(config.device_filter.is_empty());
+        assert!(!config.miflora_enabled);
+        assert!(config.miflora_filter.is_empty());
+        assert_eq!(config.miflora_connect_timeout_secs, 10);
     }
 
     #[test]
     fn should_deserialize_empty_toml() {
         let config: BleConfig = toml::from_str("").unwrap();
         assert_eq!(config.scan_duration_secs, 10);
+        assert!(!config.miflora_enabled);
     }
 }
