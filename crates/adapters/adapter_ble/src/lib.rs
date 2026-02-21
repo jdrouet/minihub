@@ -22,6 +22,7 @@
 
 mod config;
 mod error;
+pub mod miflora;
 pub mod parser;
 mod scanner;
 
