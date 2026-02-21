@@ -10,6 +10,9 @@ members = [
     "crates/adapters/adapter_ble",
     "crates/bin/minihubd",
 ]
+exclude = [
+    "crates/adapters/adapter_dashboard_leptos",
+]
 
 [workspace.package]
 version = "0.1.0"
