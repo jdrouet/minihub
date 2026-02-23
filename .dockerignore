@@ -1,0 +1,9 @@
+target/
+*.db
+*.sqlite
+*.sqlite3
+minihub.toml
+lcov.info
+.git/
+.github/
+.claude/
