@@ -1,0 +1,4 @@
+[workspace]
+# Don't publish to crates.io — git tags + GitHub releases only.
+publish = false
+git_release_enable = true
