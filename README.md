@@ -161,22 +161,6 @@ cargo llvm-cov
 cargo llvm-cov --html
 ```
 
-## Roadmap
-
-| Milestone | Goal | Key deliverables |
-|-----------|------|-----------------|
-| **M0** | Scaffold & plan | Workspace structure, docs, CI stub |
-| **M1** | Domain & app core | Entity/Device/Area types, port traits, entity service, unit tests |
-| **M2** | HTTP + storage | axum API, SSR dashboard, SQLite repos, integration tests |
-| **M3** | Events & automations | Event log, automation engine, automation dashboard |
-| **M4** | Virtual integration | Built-in demo integration with simulated devices |
-| **M5** | Polish & harden | Error handling, logging, config, graceful shutdown, docs |
-| **M6** | MQTT integration | MQTT adapter for real devices |
-| **M7** | Passive BLE integration | BLE scanning for Xiaomi LYWSD03MMC sensors |
-| **M8** | Leptos dashboard + entity history | Replace SSR with Leptos WASM CSR, add sensor history charts, SSE real-time updates |
-
-See [TASKS.md](TASKS.md) for detailed task breakdown and definitions of done.
-
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
