@@ -20,6 +20,6 @@ pub enum StorageError {
 
 impl From<StorageError> for MiniHubError {
     fn from(err: StorageError) -> Self {
-        Self::Storage(Box::new(err))
+        Self::Storage(err.into())
     }
 }

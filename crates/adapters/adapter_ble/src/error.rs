@@ -33,7 +33,7 @@ pub enum BleError {
     },
 
     /// A domain-level error (validation, not-found, etc.).
-    #[error("domain error")]
+    #[error("{0}")]
     Domain(#[source] MiniHubError),
 }
 
@@ -70,7 +70,7 @@ impl BleError {
     pub fn into_domain(self) -> MiniHubError {
         match self {
             Self::Domain(err) => err,
-            other => MiniHubError::Storage(Box::new(other)),
+            other => MiniHubError::Storage(other.into()),
         }
     }
 }
