@@ -632,6 +632,7 @@ async fn app_with_virtual() -> axum::Router {
         Arc::clone(&device_service),
         Arc::clone(&entity_service),
         Arc::clone(&event_bus),
+        Arc::clone(&event_bus),
     );
     let mut virtual_integration = VirtualIntegration::default();
     virtual_integration.setup(&ctx).await.unwrap();
