@@ -185,6 +185,30 @@ pub async fn fetch_entity_history(
     Ok(history)
 }
 
+/// Call a service on an entity (e.g. "blink").
+///
+/// `POST /api/entities/{id}/service` — returns 202 with no body on success.
+pub async fn call_entity_service(id: &str, service: &str) -> Result<(), ApiError> {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct ServiceCallRequest {
+        service: String,
+    }
+
+    let url = format!("/api/entities/{id}/service");
+    check_response(
+        Request::post(&url)
+            .json(&ServiceCallRequest {
+                service: service.to_owned(),
+            })?
+            .send()
+            .await?,
+    )
+    .await?;
+    Ok(())
+}
+
 /// Update automation (toggle enabled state).
 pub async fn update_automation(automation: Automation) -> Result<Automation, ApiError> {
     use serde::Serialize;
