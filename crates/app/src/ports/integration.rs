@@ -39,7 +39,7 @@ pub trait IntegrationContext: Send + Sync {
     fn publish(&self, event: Event) -> impl Future<Output = Result<(), MiniHubError>> + Send;
 
     /// Look up an entity by its UUID.
-    fn get_entity(
+    fn find_entity_by_id(
         &self,
         id: EntityId,
     ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send;

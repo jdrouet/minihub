@@ -129,7 +129,7 @@ mod tests {
             async { Ok(entity) }
         }
 
-        async fn get_entity(
+        async fn find_entity_by_id(
             &self,
             _id: minihub_domain::id::EntityId,
         ) -> Result<Option<Entity>, MiniHubError> {

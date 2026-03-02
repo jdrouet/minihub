@@ -57,7 +57,7 @@ use crate::scanner::BleScanner;
 ///
 /// Holds handles to a background [`BleScanner`] and an event subscriber
 /// task. MAC addresses are stored in the database on each entity and
-/// looked up at service-call time via [`IntegrationContext::get_entity`].
+/// looked up at service-call time via [`IntegrationContext::find_entity_by_id`].
 pub struct BleIntegration {
     config: BleConfig,
     scan_handle: Option<JoinHandle<()>>,
@@ -188,7 +188,7 @@ async fn run_event_subscriber(ctx: impl IntegrationContext + 'static) {
         };
 
         // Look up the entity in the database and extract its MAC address.
-        let mac = match ctx.get_entity(entity_id).await {
+        let mac = match ctx.find_entity_by_id(entity_id).await {
             Ok(Some(entity)) => entity
                 .mac_address
                 .as_deref()
@@ -312,8 +312,8 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use minihub_domain::id::DeviceId;
     use minihub_domain::entity::{AttributeValue, EntityState};
+    use minihub_domain::id::DeviceId;
     use std::sync::Arc;
     use tokio::sync::broadcast;
 
@@ -331,7 +331,7 @@ mod tests {
             Ok(entity)
         }
 
-        async fn get_entity(&self, _id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+        async fn find_entity_by_id(&self, _id: EntityId) -> Result<Option<Entity>, MiniHubError> {
             Ok(None)
         }
 
@@ -348,7 +348,7 @@ mod tests {
 
     /// Test context backed by a real broadcast channel for subscriber tests.
     ///
-    /// Stores entities in a `HashMap` so that `get_entity` can resolve MAC
+    /// Stores entities in a `HashMap` so that `find_entity_by_id` can resolve MAC
     /// addresses during service-call handling.
     #[derive(Clone)]
     struct BroadcastContext {
@@ -371,7 +371,7 @@ mod tests {
             let _ = self.tx.send(event);
         }
 
-        /// Register an entity with a MAC address for `get_entity` lookups.
+        /// Register an entity with a MAC address for `find_entity_by_id` lookups.
         fn insert_entity(&self, entity_id: EntityId, mac: &str) {
             let entity = Entity {
                 id: entity_id,
@@ -400,7 +400,7 @@ mod tests {
             Ok(entity)
         }
 
-        async fn get_entity(&self, id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+        async fn find_entity_by_id(&self, id: EntityId) -> Result<Option<Entity>, MiniHubError> {
             Ok(self.entities.lock().unwrap().get(&id).cloned())
         }
 
@@ -665,7 +665,7 @@ mod tests {
             Ok(entity)
         }
 
-        async fn get_entity(&self, _id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+        async fn find_entity_by_id(&self, _id: EntityId) -> Result<Option<Entity>, MiniHubError> {
             Ok(None)
         }
 

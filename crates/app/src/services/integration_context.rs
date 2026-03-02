@@ -70,7 +70,7 @@ where
         self.entity_service.upsert_entity(entity).await
     }
 
-    async fn get_entity(
+    async fn find_entity_by_id(
         &self,
         id: minihub_domain::id::EntityId,
     ) -> Result<Option<Entity>, MiniHubError> {
