@@ -28,6 +28,9 @@ pub enum EventType {
     EntityRemoved,
     AutomationTriggered,
     DeviceDetected,
+    ServiceCallRequested,
+    ServiceCallCompleted,
+    ServiceCallFailed,
 }
 
 impl Event {
@@ -58,6 +61,9 @@ impl EventType {
             Self::EntityRemoved => "entity_removed",
             Self::AutomationTriggered => "automation_triggered",
             Self::DeviceDetected => "device_detected",
+            Self::ServiceCallRequested => "service_call_requested",
+            Self::ServiceCallCompleted => "service_call_completed",
+            Self::ServiceCallFailed => "service_call_failed",
         }
     }
 }
@@ -131,6 +137,9 @@ mod tests {
             EventType::EntityRemoved,
             EventType::AutomationTriggered,
             EventType::DeviceDetected,
+            EventType::ServiceCallRequested,
+            EventType::ServiceCallCompleted,
+            EventType::ServiceCallFailed,
         ];
 
         for variant in &variants {
@@ -149,5 +158,17 @@ mod tests {
             "automation_triggered"
         );
         assert_eq!(EventType::DeviceDetected.to_string(), "device_detected");
+        assert_eq!(
+            EventType::ServiceCallRequested.to_string(),
+            "service_call_requested"
+        );
+        assert_eq!(
+            EventType::ServiceCallCompleted.to_string(),
+            "service_call_completed"
+        );
+        assert_eq!(
+            EventType::ServiceCallFailed.to_string(),
+            "service_call_failed"
+        );
     }
 }
