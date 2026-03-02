@@ -3,6 +3,9 @@
 //! Provides [`read_miflora`] which connects to a Mi Flora peripheral,
 //! writes the activation command, reads sensor data and firmware info,
 //! and always disconnects — even on error.
+//!
+//! Also provides [`blink_miflora`] which writes the blink LED command
+//! to a Mi Flora peripheral.
 
 use btleplug::api::{Characteristic, Peripheral as _, WriteType};
 use btleplug::platform::Peripheral;
@@ -12,6 +15,9 @@ use crate::miflora::{self, CMD_CHAR, DATA_CHAR, FIRMWARE_CHAR, MifloraReading};
 
 /// Command bytes to write to the CMD characteristic to activate sensor mode.
 const ACTIVATE_CMD: &[u8] = &[0xa0, 0x1f];
+
+/// Command bytes to write to the CMD characteristic to blink the LED.
+const BLINK_CMD: &[u8] = &[0xfd, 0xff];
 
 /// Find a GATT characteristic by UUID on a peripheral that has already
 /// discovered its services.
@@ -101,6 +107,50 @@ async fn read_miflora_inner(
     })
 }
 
+/// Connect to a Mi Flora peripheral, write the blink LED command, and
+/// disconnect.
+///
+/// The connection is always closed on return, even if the write fails.
+/// The caller is responsible for applying a per-device timeout around
+/// this function.
+///
+/// # Protocol
+///
+/// 1. Connect to the peripheral
+/// 2. Discover services and characteristics
+/// 3. Write `[0xfd, 0xff]` to the CMD characteristic (blink LED)
+/// 4. Disconnect
+///
+/// # Errors
+///
+/// Returns [`BleError::GattConnect`] if the connection fails,
+/// [`BleError::CharacteristicNotFound`] if the CMD characteristic is
+/// missing, or [`BleError::Scan`] for write failures.
+pub async fn blink_miflora(peripheral: &Peripheral) -> Result<(), BleError> {
+    peripheral.connect().await.map_err(BleError::GattConnect)?;
+
+    let result = blink_miflora_inner(peripheral).await;
+
+    if let Err(err) = peripheral.disconnect().await {
+        tracing::warn!(%err, "failed to disconnect Mi Flora peripheral after blink");
+    }
+
+    result
+}
+
+/// Inner blink logic, separated so the caller can always disconnect.
+async fn blink_miflora_inner(peripheral: &Peripheral) -> Result<(), BleError> {
+    peripheral.discover_services().await?;
+
+    let cmd_char = find_characteristic(peripheral, CMD_CHAR)?;
+
+    peripheral
+        .write(&cmd_char, BLINK_CMD, WriteType::WithResponse)
+        .await?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +158,10 @@ mod tests {
     #[test]
     fn should_have_correct_activate_command() {
         assert_eq!(ACTIVATE_CMD, &[0xa0, 0x1f]);
+    }
+
+    #[test]
+    fn should_have_correct_blink_command() {
+        assert_eq!(BLINK_CMD, &[0xfd, 0xff]);
     }
 }
