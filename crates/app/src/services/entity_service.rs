@@ -122,6 +122,7 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
             let old_state = updated.state.clone();
             updated.state.clone_from(&entity.state);
             updated.attributes.clone_from(&entity.attributes);
+            updated.mac_address.clone_from(&entity.mac_address);
             updated.last_updated = now();
             if old_state != entity.state {
                 updated.last_changed = now();

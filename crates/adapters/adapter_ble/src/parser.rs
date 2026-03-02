@@ -176,6 +176,24 @@ pub fn format_mac(mac: [u8; 6]) -> String {
     )
 }
 
+/// Parse a colon-separated hex MAC string (e.g. `"A4:C1:38:5B:0E:DF"`) back
+/// to 6 raw bytes.
+///
+/// Returns `None` if the string does not have exactly 6 colon-separated hex
+/// octets.
+#[must_use]
+pub fn parse_mac(s: &str) -> Option<[u8; 6]> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 6 {
+        return None;
+    }
+    let mut mac = [0u8; 6];
+    for (i, part) in parts.iter().enumerate() {
+        mac[i] = u8::from_str_radix(part, 16).ok()?;
+    }
+    Some(mac)
+}
+
 /// Normalise a MAC to a lowercase slug suitable for entity IDs (e.g. `"a4c1385b0edf"`).
 #[must_use]
 pub fn mac_slug(mac: [u8; 6]) -> String {

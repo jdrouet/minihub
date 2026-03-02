@@ -46,6 +46,8 @@ impl<'r> FromRow<'r, SqliteRow> for Wrapper {
             .map_err(|err| sqlx::Error::Decode(Box::new(err)))?
             .to_utc();
 
+        let mac_address: Option<String> = row.try_get("mac_address")?;
+
         Ok(Self(Entity {
             id,
             device_id,
@@ -53,6 +55,7 @@ impl<'r> FromRow<'r, SqliteRow> for Wrapper {
             friendly_name,
             state,
             attributes,
+            mac_address,
             last_changed,
             last_updated,
         }))
@@ -60,8 +63,8 @@ impl<'r> FromRow<'r, SqliteRow> for Wrapper {
 }
 
 const INSERT: &str = r"
-    INSERT INTO entities (id, device_id, entity_id, friendly_name, state, attributes, last_changed, last_updated)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entities (id, device_id, entity_id, friendly_name, state, attributes, mac_address, last_changed, last_updated)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ";
 
 const SELECT_BY_ID: &str = "SELECT * FROM entities WHERE id = ?";
@@ -72,7 +75,7 @@ const SELECT_BY_ENTITY_ID: &str = "SELECT * FROM entities WHERE entity_id = ?";
 const UPDATE: &str = r"
     UPDATE entities
     SET device_id = ?, entity_id = ?, friendly_name = ?, state = ?, attributes = ?,
-        last_changed = ?, last_updated = ?
+        mac_address = ?, last_changed = ?, last_updated = ?
     WHERE id = ?
 ";
 
@@ -103,6 +106,7 @@ impl EntityRepository for SqliteEntityRepository {
             .bind(&entity.friendly_name)
             .bind(entity.state.to_string())
             .bind(&attributes_json)
+            .bind(entity.mac_address.as_deref())
             .bind(entity.last_changed.to_rfc3339())
             .bind(entity.last_updated.to_rfc3339())
             .execute(&self.pool)
@@ -161,6 +165,7 @@ impl EntityRepository for SqliteEntityRepository {
             .bind(&entity.friendly_name)
             .bind(entity.state.to_string())
             .bind(&attributes_json)
+            .bind(entity.mac_address.as_deref())
             .bind(entity.last_changed.to_rfc3339())
             .bind(entity.last_updated.to_rfc3339())
             .bind(entity.id.as_uuid())

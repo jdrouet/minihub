@@ -27,6 +27,8 @@ pub struct Entity {
     pub friendly_name: String,
     pub state: EntityState,
     pub attributes: HashMap<String, AttributeValue>,
+    /// Hardware MAC address, if the entity is backed by a BLE/network device.
+    pub mac_address: Option<String>,
     pub last_changed: Timestamp,
     pub last_updated: Timestamp,
 }
@@ -84,6 +86,7 @@ pub struct EntityBuilder {
     friendly_name: Option<String>,
     state: Option<EntityState>,
     attributes: HashMap<String, AttributeValue>,
+    mac_address: Option<String>,
 }
 
 impl EntityBuilder {
@@ -123,6 +126,13 @@ impl EntityBuilder {
         self
     }
 
+    /// Set the hardware MAC address.
+    #[must_use]
+    pub fn mac_address(mut self, mac: impl Into<String>) -> Self {
+        self.mac_address = Some(mac.into());
+        self
+    }
+
     /// Consume the builder, validate, and return an [`Entity`].
     ///
     /// # Errors
@@ -137,6 +147,7 @@ impl EntityBuilder {
             friendly_name: self.friendly_name.unwrap_or_default(),
             state: self.state.unwrap_or_default(),
             attributes: self.attributes,
+            mac_address: self.mac_address,
             last_changed: now,
             last_updated: now,
         };

@@ -39,6 +39,7 @@ pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevi
         .entity_id(format!("sensor.ble_{slug}"))
         .friendly_name(format!("BLE Temp/Humidity {mac_str}"))
         .state(EntityState::On)
+        .mac_address(&mac_str)
         .attribute("temperature", AttributeValue::Float(reading.temperature))
         .attribute("humidity", AttributeValue::Float(reading.humidity))
         .attribute(
@@ -321,6 +322,13 @@ mod tests {
 
         async fn upsert_entity(&self, entity: Entity) -> Result<Entity, MiniHubError> {
             Ok(entity)
+        }
+
+        async fn find_entity_by_id(
+            &self,
+            _id: minihub_domain::id::EntityId,
+        ) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
         }
 
         async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {

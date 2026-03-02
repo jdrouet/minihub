@@ -70,6 +70,17 @@ where
         self.entity_service.upsert_entity(entity).await
     }
 
+    async fn find_entity_by_id(
+        &self,
+        id: minihub_domain::id::EntityId,
+    ) -> Result<Option<Entity>, MiniHubError> {
+        match self.entity_service.get_entity(id).await {
+            Ok(entity) => Ok(Some(entity)),
+            Err(MiniHubError::NotFound(_)) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
     async fn publish(&self, event: Event) -> Result<(), MiniHubError> {
         self.event_publisher.publish(event).await
     }
@@ -295,6 +306,7 @@ mod tests {
             friendly_name: "Test light".into(),
             state: EntityState::default(),
             attributes: HashMap::new(),
+            mac_address: None,
             last_changed: minihub_domain::time::now(),
             last_updated: minihub_domain::time::now(),
         };
