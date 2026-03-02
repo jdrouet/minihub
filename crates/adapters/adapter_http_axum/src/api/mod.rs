@@ -15,7 +15,7 @@ pub mod events;
 pub mod sse;
 
 use axum::Router;
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 
 use minihub_app::ports::{
     AreaRepository, AutomationRepository, DeviceRepository, EntityHistoryRepository,
@@ -50,6 +50,10 @@ where
         .route(
             "/entities/{id}/state",
             put(entities::update_state::<ER, DR, AR, EP, ES, AUR, EHR>),
+        )
+        .route(
+            "/entities/{id}/service",
+            post(entities::service_call::<ER, DR, AR, EP, ES, AUR, EHR>),
         )
         .route(
             "/entities/{id}/history",
