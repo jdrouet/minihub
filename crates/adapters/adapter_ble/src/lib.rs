@@ -36,7 +36,6 @@ pub use config::BleConfig;
 pub use error::BleError;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 
 use btleplug::api::{BDAddr, Central, Manager as _, Peripheral as _, ScanFilter};
@@ -51,22 +50,20 @@ use minihub_domain::event::{Event, EventType};
 use minihub_domain::id::EntityId;
 
 use crate::parser::ServiceUuid;
-use crate::scanner::{BleScanner, EntityMacMap};
+use crate::scanner::BleScanner;
 
 /// BLE integration — scans for BLE sensor advertisements and handles
 /// service calls via the event bus.
 ///
 /// Holds handles to a background [`BleScanner`] and an event subscriber
-/// task. The scanner populates an [`EntityMacMap`] that the subscriber
-/// uses to resolve which physical device to target for service calls.
+/// task. MAC addresses are stored in the database on each entity and
+/// looked up at service-call time via [`IntegrationContext::get_entity`].
 pub struct BleIntegration {
     config: BleConfig,
     scan_handle: Option<JoinHandle<()>>,
     subscriber_handle: Option<JoinHandle<()>>,
     /// Maps BLE MAC address to the most recent entity snapshot.
     entities: HashMap<BDAddr, Entity>,
-    /// Shared map from persisted entity ID to raw MAC bytes.
-    entity_mac_map: EntityMacMap,
 }
 
 impl BleIntegration {
@@ -78,7 +75,6 @@ impl BleIntegration {
             scan_handle: None,
             subscriber_handle: None,
             entities: HashMap::new(),
-            entity_mac_map: EntityMacMap::default(),
         }
     }
 }
@@ -113,15 +109,10 @@ impl Integration for BleIntegration {
             miflora_enabled,
             miflora_filter,
             miflora_connect_timeout,
-            Arc::clone(&self.entity_mac_map),
         ));
 
-        let entity_mac_map = Arc::clone(&self.entity_mac_map);
         let subscriber_ctx = ctx;
-        self.subscriber_handle = Some(tokio::spawn(run_event_subscriber(
-            subscriber_ctx,
-            entity_mac_map,
-        )));
+        self.subscriber_handle = Some(tokio::spawn(run_event_subscriber(subscriber_ctx)));
 
         tracing::info!(
             interval_secs = self.config.update_interval_secs,
@@ -167,11 +158,9 @@ impl Integration for BleIntegration {
 const SERVICE_CALL_SCAN_SECS: u64 = 3;
 
 /// Subscribe to the event bus, filter for [`EventType::ServiceCallRequested`]
-/// events that target entities in the [`EntityMacMap`], and handle them.
-async fn run_event_subscriber(
-    ctx: impl IntegrationContext + 'static,
-    entity_mac_map: EntityMacMap,
-) {
+/// events that target BLE entities (those with a stored `mac_address`), and
+/// handle them.
+async fn run_event_subscriber(ctx: impl IntegrationContext + 'static) {
     let mut rx = ctx.subscribe();
 
     loop {
@@ -198,11 +187,17 @@ async fn run_event_subscriber(
             continue;
         };
 
-        let mac = {
-            let map = entity_mac_map
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            map.get(&entity_id).copied()
+        // Look up the entity in the database and extract its MAC address.
+        let mac = match ctx.get_entity(entity_id).await {
+            Ok(Some(entity)) => entity
+                .mac_address
+                .as_deref()
+                .and_then(crate::parser::parse_mac),
+            Ok(None) => None,
+            Err(err) => {
+                tracing::warn!(%err, %entity_id, "failed to look up entity for service call");
+                continue;
+            }
         };
 
         let Some(mac) = mac else {
@@ -317,7 +312,9 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use minihub_domain::id::DeviceId;
     use minihub_domain::entity::{AttributeValue, EntityState};
+    use std::sync::Arc;
     use tokio::sync::broadcast;
 
     struct NoOpContext;
@@ -334,6 +331,10 @@ mod tests {
             Ok(entity)
         }
 
+        async fn get_entity(&self, _id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
+        }
+
         async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {
             Ok(())
         }
@@ -346,10 +347,14 @@ mod tests {
     }
 
     /// Test context backed by a real broadcast channel for subscriber tests.
+    ///
+    /// Stores entities in a `HashMap` so that `get_entity` can resolve MAC
+    /// addresses during service-call handling.
     #[derive(Clone)]
     struct BroadcastContext {
         tx: broadcast::Sender<Event>,
         published: Arc<Mutex<Vec<Event>>>,
+        entities: Arc<Mutex<HashMap<EntityId, Entity>>>,
     }
 
     impl BroadcastContext {
@@ -358,11 +363,28 @@ mod tests {
             Self {
                 tx,
                 published: Arc::new(Mutex::new(Vec::new())),
+                entities: Arc::new(Mutex::new(HashMap::new())),
             }
         }
 
         fn send(&self, event: Event) {
             let _ = self.tx.send(event);
+        }
+
+        /// Register an entity with a MAC address for `get_entity` lookups.
+        fn insert_entity(&self, entity_id: EntityId, mac: &str) {
+            let entity = Entity {
+                id: entity_id,
+                entity_id: format!("sensor.test_{entity_id}"),
+                device_id: DeviceId::new(),
+                friendly_name: "Test entity".into(),
+                state: EntityState::On,
+                attributes: HashMap::new(),
+                mac_address: Some(mac.to_owned()),
+                last_changed: minihub_domain::time::now(),
+                last_updated: minihub_domain::time::now(),
+            };
+            self.entities.lock().unwrap().insert(entity_id, entity);
         }
     }
 
@@ -376,6 +398,10 @@ mod tests {
 
         async fn upsert_entity(&self, entity: Entity) -> Result<Entity, MiniHubError> {
             Ok(entity)
+        }
+
+        async fn get_entity(&self, id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+            Ok(self.entities.lock().unwrap().get(&id).cloned())
         }
 
         async fn publish(&self, event: Event) -> Result<(), MiniHubError> {
@@ -484,15 +510,10 @@ mod tests {
     #[tokio::test]
     async fn should_ignore_non_service_call_events() {
         let ctx = BroadcastContext::new();
-        let entity_mac_map = EntityMacMap::default();
         let entity_id = EntityId::new();
+        ctx.insert_entity(entity_id, "C4:7C:8D:6A:12:34");
 
-        entity_mac_map
-            .lock()
-            .unwrap()
-            .insert(entity_id, [0xC4, 0x7C, 0x8D, 0x6A, 0x12, 0x34]);
-
-        let handle = tokio::spawn(run_event_subscriber(ctx.clone(), entity_mac_map));
+        let handle = tokio::spawn(run_event_subscriber(ctx.clone()));
 
         ctx.send(Event::new(
             EventType::StateChanged,
@@ -514,9 +535,8 @@ mod tests {
     #[tokio::test]
     async fn should_ignore_service_call_for_unknown_entity() {
         let ctx = BroadcastContext::new();
-        let entity_mac_map = EntityMacMap::default();
 
-        let handle = tokio::spawn(run_event_subscriber(ctx.clone(), entity_mac_map));
+        let handle = tokio::spawn(run_event_subscriber(ctx.clone()));
 
         ctx.send(Event::new(
             EventType::ServiceCallRequested,
@@ -538,9 +558,8 @@ mod tests {
     #[tokio::test]
     async fn should_ignore_service_call_without_entity_id() {
         let ctx = BroadcastContext::new();
-        let entity_mac_map = EntityMacMap::default();
 
-        let handle = tokio::spawn(run_event_subscriber(ctx.clone(), entity_mac_map));
+        let handle = tokio::spawn(run_event_subscriber(ctx.clone()));
 
         ctx.send(Event::new(
             EventType::ServiceCallRequested,
@@ -562,15 +581,10 @@ mod tests {
     #[tokio::test]
     async fn should_ignore_unknown_service_for_known_entity() {
         let ctx = BroadcastContext::new();
-        let entity_mac_map = EntityMacMap::default();
         let entity_id = EntityId::new();
+        ctx.insert_entity(entity_id, "C4:7C:8D:6A:12:34");
 
-        entity_mac_map
-            .lock()
-            .unwrap()
-            .insert(entity_id, [0xC4, 0x7C, 0x8D, 0x6A, 0x12, 0x34]);
-
-        let handle = tokio::spawn(run_event_subscriber(ctx.clone(), entity_mac_map));
+        let handle = tokio::spawn(run_event_subscriber(ctx.clone()));
 
         ctx.send(Event::new(
             EventType::ServiceCallRequested,
@@ -592,15 +606,10 @@ mod tests {
     #[tokio::test]
     async fn should_publish_service_call_failed_when_blink_fails() {
         let ctx = BroadcastContext::new();
-        let entity_mac_map = EntityMacMap::default();
         let entity_id = EntityId::new();
+        ctx.insert_entity(entity_id, "C4:7C:8D:6A:12:34");
 
-        entity_mac_map
-            .lock()
-            .unwrap()
-            .insert(entity_id, [0xC4, 0x7C, 0x8D, 0x6A, 0x12, 0x34]);
-
-        let handle = tokio::spawn(run_event_subscriber(ctx.clone(), entity_mac_map));
+        let handle = tokio::spawn(run_event_subscriber(ctx.clone()));
 
         // Yield to let the subscriber task start and call subscribe()/recv()
         tokio::task::yield_now().await;
@@ -656,6 +665,10 @@ mod tests {
             Ok(entity)
         }
 
+        async fn get_entity(&self, _id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
+        }
+
         async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {
             Ok(())
         }
@@ -673,9 +686,8 @@ mod tests {
     async fn should_stop_subscriber_when_channel_closed() {
         let (tx, rx) = broadcast::channel::<Event>(16);
         let ctx = ExternalSenderContext::new(rx);
-        let entity_mac_map = EntityMacMap::default();
 
-        let handle = tokio::spawn(run_event_subscriber(ctx, entity_mac_map));
+        let handle = tokio::spawn(run_event_subscriber(ctx));
 
         // Drop the only sender so the receiver gets Closed
         drop(tx);
@@ -684,9 +696,43 @@ mod tests {
         assert!(result.is_ok(), "subscriber should stop when channel closes");
     }
 
-    #[test]
-    fn should_have_entity_mac_map_default_empty() {
-        let map = EntityMacMap::default();
-        assert!(map.lock().unwrap().is_empty());
+    #[tokio::test]
+    async fn should_ignore_entity_without_mac_address() {
+        let ctx = BroadcastContext::new();
+        let entity_id = EntityId::new();
+
+        // Insert entity WITHOUT a MAC address
+        let entity = Entity {
+            id: entity_id,
+            entity_id: format!("sensor.test_{entity_id}"),
+            device_id: DeviceId::new(),
+            friendly_name: "No-MAC entity".into(),
+            state: EntityState::On,
+            attributes: HashMap::new(),
+            mac_address: None,
+            last_changed: minihub_domain::time::now(),
+            last_updated: minihub_domain::time::now(),
+        };
+        ctx.entities.lock().unwrap().insert(entity_id, entity);
+
+        let handle = tokio::spawn(run_event_subscriber(ctx.clone()));
+
+        tokio::task::yield_now().await;
+
+        ctx.send(Event::new(
+            EventType::ServiceCallRequested,
+            Some(entity_id),
+            serde_json::json!({ "service": "blink" }),
+        ));
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let published = ctx
+            .published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(published.is_empty(), "should skip entities without MAC");
+
+        handle.abort();
     }
 }

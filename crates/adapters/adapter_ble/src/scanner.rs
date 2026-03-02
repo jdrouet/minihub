@@ -4,8 +4,6 @@
 //! Each advertisement is persisted via the [`IntegrationContext`] as soon as
 //! it is received.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
@@ -18,17 +16,10 @@ use minihub_domain::device::Device;
 use minihub_domain::entity::{AttributeValue, Entity, EntityState};
 use minihub_domain::error::MiniHubError;
 use minihub_domain::event::{Event, EventType};
-use minihub_domain::id::EntityId;
 
 use crate::error::BleError;
 use crate::parser::{self, SensorReading, ServiceUuid};
 use crate::{gatt, miflora};
-
-/// Shared map from persisted [`EntityId`] to raw MAC bytes.
-///
-/// Populated by the scanner after upserting Mi Flora entities, and read
-/// by the service-call event handler to resolve which BLE device to target.
-pub(crate) type EntityMacMap = Arc<Mutex<HashMap<EntityId, [u8; 6]>>>;
 
 /// Build a [`DiscoveredDevice`] from a [`SensorReading`].
 pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevice, MiniHubError> {
@@ -48,6 +39,7 @@ pub(crate) fn build_discovered(reading: &SensorReading) -> Result<DiscoveredDevi
         .entity_id(format!("sensor.ble_{slug}"))
         .friendly_name(format!("BLE Temp/Humidity {mac_str}"))
         .state(EntityState::On)
+        .mac_address(&mac_str)
         .attribute("temperature", AttributeValue::Float(reading.temperature))
         .attribute("humidity", AttributeValue::Float(reading.humidity))
         .attribute(
@@ -84,7 +76,6 @@ pub struct BleScanner<C> {
     miflora_enabled: bool,
     miflora_filter: Vec<String>,
     miflora_connect_timeout: Duration,
-    entity_mac_map: EntityMacMap,
 }
 
 impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
@@ -98,7 +89,6 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
         miflora_enabled: bool,
         miflora_filter: Vec<String>,
         miflora_connect_timeout: Duration,
-        entity_mac_map: EntityMacMap,
     ) -> JoinHandle<()> {
         let scanner = Self {
             context,
@@ -108,7 +98,6 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
             miflora_enabled,
             miflora_filter,
             miflora_connect_timeout,
-            entity_mac_map,
         };
 
         tokio::spawn(scanner.run())
@@ -302,7 +291,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
 
             match miflora::build_discovered(&reading) {
                 Ok(dd) => {
-                    if let Err(err) = self.persist_miflora(dd, mac_bytes).await {
+                    if let Err(err) = self.context.persist_discovered(dd).await {
                         tracing::warn!(%err, mac = %mac_str, "failed to persist Mi Flora discovery");
                     }
                 }
@@ -311,28 +300,6 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                 }
             }
         }
-    }
-    /// Persist a Mi Flora [`DiscoveredDevice`] and record each entity's
-    /// stable [`EntityId`] → MAC mapping in the shared [`EntityMacMap`].
-    ///
-    /// Unlike the default [`IntegrationContext::persist_discovered`], this
-    /// calls [`upsert_entity`](IntegrationContext::upsert_entity) individually
-    /// so that the returned (potentially pre-existing) [`EntityId`] can be
-    /// captured.
-    async fn persist_miflora(
-        &self,
-        dd: DiscoveredDevice,
-        mac: [u8; 6],
-    ) -> Result<(), MiniHubError> {
-        self.context.upsert_device(dd.device).await?;
-        for entity in dd.entities {
-            let persisted = self.context.upsert_entity(entity).await?;
-            self.entity_mac_map
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .insert(persisted.id, mac);
-        }
-        Ok(())
     }
 }
 
@@ -357,6 +324,13 @@ mod tests {
             Ok(entity)
         }
 
+        async fn get_entity(
+            &self,
+            _id: minihub_domain::id::EntityId,
+        ) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
+        }
+
         async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {
             Ok(())
         }
@@ -377,7 +351,6 @@ mod tests {
             miflora_enabled: true,
             miflora_filter: filter,
             miflora_connect_timeout: Duration::from_secs(10),
-            entity_mac_map: EntityMacMap::default(),
         }
     }
 

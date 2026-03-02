@@ -175,6 +175,7 @@ pub fn build_discovered(reading: &MifloraReading) -> Result<DiscoveredDevice, Mi
         .entity_id(format!("sensor.miflora_{slug}"))
         .friendly_name(format!("Mi Flora {mac_str}"))
         .state(EntityState::On)
+        .mac_address(&mac_str)
         .attribute(
             "temperature",
             AttributeValue::Float(reading.sensor.temperature),

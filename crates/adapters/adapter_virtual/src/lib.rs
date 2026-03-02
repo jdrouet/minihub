@@ -129,6 +129,13 @@ mod tests {
             async { Ok(entity) }
         }
 
+        async fn get_entity(
+            &self,
+            _id: minihub_domain::id::EntityId,
+        ) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
+        }
+
         async fn publish(&self, _event: minihub_domain::event::Event) -> Result<(), MiniHubError> {
             Ok(())
         }
