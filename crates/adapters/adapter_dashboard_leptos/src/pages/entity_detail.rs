@@ -3,10 +3,14 @@ use leptos::task::spawn_local;
 use leptos_router::hooks::use_params_map;
 use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::event::EventType;
-
-use crate::api::{fetch_entity, update_entity_state};
+use crate::api::{call_entity_service, fetch_entity, update_entity_state};
 use crate::components::{HistoryChart, Loading, use_toasts};
 use crate::sse::use_sse_events;
+
+/// Returns `true` when the entity's domain-level id starts with `"sensor.miflora_"`.
+fn is_miflora(entity: &Entity) -> bool {
+    entity.entity_id.starts_with("sensor.miflora_")
+}
 
 #[component]
 pub fn EntityDetail() -> impl IntoView {
@@ -19,8 +23,8 @@ pub fn EntityDetail() -> impl IntoView {
     let (error, set_error) = signal(None::<String>);
     let (loading, set_loading) = signal(true);
     let (updating, set_updating) = signal(false);
+    let (blinking, set_blinking) = signal(false);
 
-    // Fetch entity on mount
     Effect::new(move |_| {
         let entity_id = id();
         if entity_id.is_empty() {
@@ -44,44 +48,54 @@ pub fn EntityDetail() -> impl IntoView {
         });
     });
 
-    // Subscribe to SSE and re-fetch entity when a relevant event arrives
-    let (sse_event, _sse_conn) = use_sse_events();
+    let sse_event = use_sse_events();
 
+    let sse_toasts = toasts.clone();
     Effect::new(move |_| {
         let Some(event) = sse_event.get() else {
             return;
         };
-
-        let is_relevant = matches!(
-            event.event_type,
-            EventType::StateChanged | EventType::AttributeChanged
-        );
-        if !is_relevant {
-            return;
-        }
 
         let current_entity = entity.get();
         let Some(event_entity_id) = &event.entity_id else {
             return;
         };
 
-        if let Some(ref current) = current_entity {
-            if current.id != *event_entity_id {
-                return;
-            }
-        } else {
+        let Some(ref current) = current_entity else {
+            return;
+        };
+
+        if current.id != *event_entity_id {
             return;
         }
 
-        let entity_id = id();
-        spawn_local(async move {
-            match fetch_entity(&entity_id).await {
-                Ok(updated) => set_entity.set(Some(updated)),
-                Err(err) => {
-                    leptos::logging::warn!("SSE re-fetch failed: {}", err.message);
-                }
+        match event.event_type {
+            EventType::StateChanged | EventType::AttributeChanged => {
+                let entity_id = id();
+                spawn_local(async move {
+                    match fetch_entity(&entity_id).await {
+                        Ok(updated) => set_entity.set(Some(updated)),
+                        Err(err) => {
+                            leptos::logging::warn!("SSE re-fetch failed: {}", err.message);
+                        }
+                    }
+                });
             }
-        });
+            EventType::ServiceCallCompleted => {
+                set_blinking.set(false);
+                sse_toasts.push_success("Blink succeeded".to_owned());
+            }
+            EventType::ServiceCallFailed => {
+                set_blinking.set(false);
+                let reason = event
+                    .data
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown error");
+                sse_toasts.push(format!("Blink failed: {reason}"));
+            }
+            _ => {}
+        }
     });
 
     let update_toasts = toasts.clone();
@@ -108,6 +122,19 @@ pub fn EntityDetail() -> impl IntoView {
 
     let handle_turn_on = move |_| handle_update_state.run(EntityState::On);
     let handle_turn_off = move |_| handle_update_state.run(EntityState::Off);
+
+    let blink_toasts = toasts.clone();
+    let handle_blink = Callback::new(move |()| {
+        let entity_id = id();
+        let t = blink_toasts.clone();
+        set_blinking.set(true);
+        spawn_local(async move {
+            if let Err(err) = call_entity_service(&entity_id, "blink").await {
+                set_blinking.set(false);
+                t.push(err.message);
+            }
+        });
+    });
 
     let (chart_entity_id, set_chart_entity_id) = signal(String::new());
 
@@ -137,6 +164,8 @@ pub fn EntityDetail() -> impl IntoView {
                         EntityState::Unknown => "state-unknown",
                         EntityState::Unavailable => "state-unavailable",
                     };
+
+                    let show_blink = is_miflora(&e);
 
                     view! {
                         <div class="entity-detail">
@@ -203,6 +232,21 @@ pub fn EntityDetail() -> impl IntoView {
                                     >
                                         {move || if updating.get() { "Updating..." } else { "Turn Off" }}
                                     </button>
+                                    {if show_blink {
+                                        Some(view! {
+                                            <button
+                                                on:click=move |_| handle_blink.run(())
+                                                disabled=move || blinking.get()
+                                                class="btn btn-secondary"
+                                            >
+                                                {move || {
+                                                    if blinking.get() { "Blinking..." } else { "Blink" }
+                                                }}
+                                            </button>
+                                        })
+                                    } else {
+                                        None
+                                    }}
                                 </div>
                             </div>
 

@@ -96,10 +96,7 @@ fn timestamp_ticks() -> TickLabels<DateTime<Utc>> {
 
 /// Render a single attribute chart.
 #[component]
-fn AttributeChart(
-    name: String,
-    data: Signal<Vec<ChartPoint>>,
-) -> impl IntoView {
+fn AttributeChart(name: String, data: Signal<Vec<ChartPoint>>) -> impl IntoView {
     let label = name.clone();
     let series = Series::new(|p: &ChartPoint| p.timestamp)
         .line(Line::new(|p: &ChartPoint| p.value).with_name(name));
@@ -137,8 +134,7 @@ pub fn HistoryChart(entity_id: ReadSignal<String>) -> impl IntoView {
     let (range, set_range) = signal(TimeRange::TwentyFourHours);
     let (chart_error, set_chart_error) = signal(None::<String>);
     let (loading, set_loading) = signal(false);
-    let (series_list, set_series_list) =
-        signal(Vec::<(String, Vec<ChartPoint>)>::new());
+    let (series_list, set_series_list) = signal(Vec::<(String, Vec<ChartPoint>)>::new());
 
     Effect::new(move |_| {
         let eid = entity_id.get();

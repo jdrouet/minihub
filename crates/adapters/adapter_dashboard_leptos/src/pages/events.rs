@@ -22,7 +22,7 @@ pub fn Events() -> impl IntoView {
     });
 
     // Subscribe to SSE and prepend new events
-    let (sse_event, _sse_conn) = use_sse_events();
+    let sse_event = use_sse_events();
 
     Effect::new(move |_| {
         let Some(event) = sse_event.get() else {

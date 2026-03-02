@@ -84,12 +84,12 @@ where
         // Events
         .route("/events", get(events::list::<ER, DR, AR, EP, ES, AUR, EHR>))
         .route(
-            "/events/{id}",
-            get(events::get::<ER, DR, AR, EP, ES, AUR, EHR>),
-        )
-        .route(
             "/events/stream",
             get(sse::stream::<ER, DR, AR, EP, ES, AUR, EHR>),
+        )
+        .route(
+            "/events/{id}",
+            get(events::get::<ER, DR, AR, EP, ES, AUR, EHR>),
         )
         // Automations
         .route(

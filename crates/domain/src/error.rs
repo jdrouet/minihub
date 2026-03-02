@@ -38,14 +38,14 @@ pub struct NotFoundError {
 /// error types via `#[from]`.
 #[derive(Debug, thiserror::Error)]
 pub enum MiniHubError {
-    #[error("Validation error")]
+    #[error("{0}")]
     Validation(#[from] ValidationError),
 
-    #[error("Not found")]
+    #[error("{0}")]
     NotFound(#[from] NotFoundError),
 
-    #[error("Storage error")]
-    Storage(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error(transparent)]
+    Storage(#[from] anyhow::Error),
 }
 
 /// Convenience alias used throughout the domain and application layers.
