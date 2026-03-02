@@ -132,6 +132,12 @@ mod tests {
         async fn publish(&self, _event: minihub_domain::event::Event) -> Result<(), MiniHubError> {
             Ok(())
         }
+
+        fn subscribe(&self) -> tokio::sync::broadcast::Receiver<minihub_domain::event::Event> {
+            let (tx, rx) = tokio::sync::broadcast::channel(1);
+            drop(tx);
+            rx
+        }
     }
 
     #[tokio::test]

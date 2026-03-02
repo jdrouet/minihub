@@ -326,6 +326,12 @@ mod tests {
         async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {
             Ok(())
         }
+
+        fn subscribe(&self) -> tokio::sync::broadcast::Receiver<Event> {
+            let (tx, rx) = tokio::sync::broadcast::channel(1);
+            drop(tx);
+            rx
+        }
     }
 
     fn scanner_with_miflora_filter(filter: Vec<String>) -> BleScanner<NoOpContext> {
