@@ -1,0 +1,29 @@
+services:
+  minihub:
+    image: ghcr.io/jdrouet/minihub:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./minihub.toml:/app/minihub.toml:ro
+      - /run/dbus:/run/dbus:ro
+      - minihub-data:/app/data
+    environment:
+      MINIHUB_LOG: "minihubd=info,minihub=info,tower_http=debug"
+    restart: unless-stopped
+
+  # Optional: MQTT broker
+  # Uncomment to run a local Mosquitto instance alongside minihub.
+  #
+  # mosquitto:
+  #   image: eclipse-mosquitto:2
+  #   ports:
+  #     - "1883:1883"
+  #   volumes:
+  #     - mosquitto-data:/mosquitto/data
+  #     - mosquitto-log:/mosquitto/log
+  #   restart: unless-stopped
+
+volumes:
+  minihub-data:
+  # mosquitto-data:
+  # mosquitto-log:
