@@ -1,7 +1,24 @@
-//! Toast notification system for showing transient error messages.
+//! Toast notification system for showing transient messages.
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+
+/// Visual style of a toast notification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastKind {
+    Error,
+    Success,
+}
+
+impl ToastKind {
+    /// CSS class suffix for the toast element.
+    fn css_class(self) -> &'static str {
+        match self {
+            Self::Error => "toast-error",
+            Self::Success => "toast-success",
+        }
+    }
+}
 
 /// A single toast message.
 #[derive(Debug, Clone)]
@@ -10,6 +27,8 @@ pub struct ToastMessage {
     pub id: u32,
     /// The message body to display.
     pub text: String,
+    /// Visual kind (error / success).
+    pub kind: ToastKind,
 }
 
 /// Reactive context providing toast mutation methods.
@@ -23,11 +42,20 @@ pub struct ToastProvider {
 impl ToastProvider {
     /// Push a new error toast. It auto-dismisses after 5 seconds.
     pub fn push(&self, text: String) {
+        self.push_with_kind(text, ToastKind::Error);
+    }
+
+    /// Push a new success toast. It auto-dismisses after 5 seconds.
+    pub fn push_success(&self, text: String) {
+        self.push_with_kind(text, ToastKind::Success);
+    }
+
+    fn push_with_kind(&self, text: String, kind: ToastKind) {
         let id = self.next_id.get_untracked();
         self.set_next_id.set(id + 1);
 
         self.set_toasts.update(|list| {
-            list.push(ToastMessage { id, text });
+            list.push(ToastMessage { id, text, kind });
         });
 
         let set_toasts = self.set_toasts;
@@ -79,9 +107,10 @@ pub fn ToastContainer(children: Children) -> impl IntoView {
                     .into_iter()
                     .map(|toast| {
                         let id = toast.id;
+                        let css = format!("toast {}", toast.kind.css_class());
                         let p = provider.clone();
                         view! {
-                            <div class="toast toast-error">
+                            <div class=css>
                                 <button class="toast-dismiss" on:click=move |_| p.dismiss(id)>
                                     "\u{00D7}"
                                 </button>
