@@ -38,6 +38,12 @@ pub trait IntegrationContext: Send + Sync {
     /// Publish a domain event to the event bus.
     fn publish(&self, event: Event) -> impl Future<Output = Result<(), MiniHubError>> + Send;
 
+    /// Look up an entity by its UUID.
+    fn get_entity(
+        &self,
+        id: EntityId,
+    ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send;
+
     /// Subscribe to domain events on the event bus.
     ///
     /// Returns a concrete [`broadcast::Receiver`] — there is only one
