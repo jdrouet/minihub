@@ -6,6 +6,8 @@
 
 use std::future::Future;
 
+use tokio::sync::broadcast;
+
 use minihub_domain::device::Device;
 use minihub_domain::entity::Entity;
 use minihub_domain::error::MiniHubError;
@@ -35,6 +37,13 @@ pub trait IntegrationContext: Send + Sync {
 
     /// Publish a domain event to the event bus.
     fn publish(&self, event: Event) -> impl Future<Output = Result<(), MiniHubError>> + Send;
+
+    /// Subscribe to domain events on the event bus.
+    ///
+    /// Returns a concrete [`broadcast::Receiver`] — there is only one
+    /// event-bus implementation (`InProcessEventBus`) so an abstract
+    /// return type is unnecessary.
+    fn subscribe(&self) -> broadcast::Receiver<Event>;
 
     /// Convenience: persist a full [`DiscoveredDevice`] (device + all entities).
     fn persist_discovered(

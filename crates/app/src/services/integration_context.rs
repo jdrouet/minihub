@@ -2,11 +2,14 @@
 
 use std::sync::Arc;
 
+use tokio::sync::broadcast;
+
 use minihub_domain::device::Device;
 use minihub_domain::entity::Entity;
 use minihub_domain::error::MiniHubError;
 use minihub_domain::event::Event;
 
+use crate::event_bus::InProcessEventBus;
 use crate::ports::{DeviceRepository, EntityRepository, EventPublisher, IntegrationContext};
 use crate::services::device_service::DeviceService;
 use crate::services::entity_service::EntityService;
@@ -21,19 +24,23 @@ pub struct ServiceContext<DR, ER, EP> {
     device_service: Arc<DeviceService<DR>>,
     entity_service: Arc<EntityService<ER, EP>>,
     event_publisher: EP,
+    event_bus: Arc<InProcessEventBus>,
 }
 
 impl<DR, ER, EP> ServiceContext<DR, ER, EP> {
-    /// Create a new context backed by the given services and event publisher.
+    /// Create a new context backed by the given services, event publisher,
+    /// and event bus (for subscriptions).
     pub fn new(
         device_service: Arc<DeviceService<DR>>,
         entity_service: Arc<EntityService<ER, EP>>,
         event_publisher: EP,
+        event_bus: Arc<InProcessEventBus>,
     ) -> Self {
         Self {
             device_service,
             entity_service,
             event_publisher,
+            event_bus,
         }
     }
 }
@@ -44,6 +51,7 @@ impl<DR, ER, EP: Clone> Clone for ServiceContext<DR, ER, EP> {
             device_service: Arc::clone(&self.device_service),
             entity_service: Arc::clone(&self.entity_service),
             event_publisher: self.event_publisher.clone(),
+            event_bus: Arc::clone(&self.event_bus),
         }
     }
 }
@@ -64,5 +72,9 @@ where
 
     async fn publish(&self, event: Event) -> Result<(), MiniHubError> {
         self.event_publisher.publish(event).await
+    }
+
+    fn subscribe(&self) -> broadcast::Receiver<Event> {
+        self.event_bus.subscribe()
     }
 }

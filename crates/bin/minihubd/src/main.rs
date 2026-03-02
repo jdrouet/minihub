@@ -137,6 +137,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&device_service),
         Arc::clone(&entity_service),
         Arc::clone(&event_bus),
+        Arc::clone(&event_bus),
     );
 
     // Integrations
