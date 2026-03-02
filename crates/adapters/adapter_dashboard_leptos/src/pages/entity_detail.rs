@@ -3,7 +3,6 @@ use leptos::task::spawn_local;
 use leptos_router::hooks::use_params_map;
 use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::event::EventType;
-
 use crate::api::{call_entity_service, fetch_entity, update_entity_state};
 use crate::components::{HistoryChart, Loading, use_toasts};
 use crate::sse::use_sse_events;
@@ -49,7 +48,7 @@ pub fn EntityDetail() -> impl IntoView {
         });
     });
 
-    let (sse_event, _sse_conn) = use_sse_events();
+    let sse_event = use_sse_events();
 
     let sse_toasts = toasts.clone();
     Effect::new(move |_| {
