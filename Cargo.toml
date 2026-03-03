@@ -15,7 +15,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -23,13 +23,13 @@ repository = "https://github.com/YOUR_USER/minihub"
 
 [workspace.dependencies]
 # Domain & application crates (internal)
-minihub-domain = { path = "crates/domain", version = "0.1.0" }
-minihub-app = { path = "crates/app", version = "0.1.0" }
-minihub-adapter-http-axum = { path = "crates/adapters/adapter_http_axum", version = "0.1.0" }
-minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/adapter_storage_sqlite_sqlx", version = "0.1.0" }
-minihub-adapter-virtual = { path = "crates/adapters/adapter_virtual", version = "0.1.0" }
-minihub-adapter-mqtt = { path = "crates/adapters/adapter_mqtt", version = "0.1.0" }
-minihub-adapter-ble = { path = "crates/adapters/adapter_ble", version = "0.1.0" }
+minihub-domain = { path = "crates/domain", version = "0.1.1" }
+minihub-app = { path = "crates/app", version = "0.1.1" }
+minihub-adapter-http-axum = { path = "crates/adapters/adapter_http_axum", version = "0.1.1" }
+minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/adapter_storage_sqlite_sqlx", version = "0.1.1" }
+minihub-adapter-virtual = { path = "crates/adapters/adapter_virtual", version = "0.1.1" }
+minihub-adapter-mqtt = { path = "crates/adapters/adapter_mqtt", version = "0.1.1" }
+minihub-adapter-ble = { path = "crates/adapters/adapter_ble", version = "0.1.1" }
 
 # External dependencies
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
