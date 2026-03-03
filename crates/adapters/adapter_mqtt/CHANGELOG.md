@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/jdrouet/minihub/releases/tag/minihub-adapter-mqtt-v0.1.1) - 2026-03-03
+
+### Added
+
+- device deduplication via integration + unique_id fields
+- *(mqtt)* implement MQTT adapter with Integration trait (M6-T2)
+- add adapter crate placeholders
+
+### Other
+
+- release v0.1.1
+- *(error)* use anyhow for Storage variant and transparent error display
+- release v0.1.0
+- *(mqtt)* rework for IntegrationContext + background discovery
+- *(mqtt)* add additional unit tests for edge cases (M6-T3)
+- add ADR-009 for rumqttc MQTT client choice (M6-T1)
+- scaffold Cargo workspace with crate boundaries
+
 ## [0.1.0](https://github.com/jdrouet/minihub/releases/tag/minihub-adapter-mqtt-v0.1.0) - 2026-02-23
 
 ### Added
