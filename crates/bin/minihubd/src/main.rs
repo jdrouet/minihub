@@ -97,8 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         event.event_type,
                         minihub_domain::event::EventType::StateChanged
                             | minihub_domain::event::EventType::AttributeChanged
-                    ) {
-                        if let Some(entity_id) = event.entity_id {
+                    )
+                        && let Some(entity_id) = event.entity_id {
                             match entity_svc_for_history.get_entity(entity_id).await {
                                 Ok(entity) => {
                                     let history =
@@ -118,7 +118,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         }
-                    }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!(
