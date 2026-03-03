@@ -47,9 +47,7 @@ impl Lywsd03mmcHandler {
         if self.filter.is_empty() {
             return true;
         }
-        self.filter
-            .iter()
-            .any(|f| f.eq_ignore_ascii_case(mac))
+        self.filter.iter().any(|f| f.eq_ignore_ascii_case(mac))
     }
 }
 
@@ -81,7 +79,9 @@ impl BleDeviceHandler for Lywsd03mmcHandler {
             return Ok(None);
         }
 
-        build_discovered(&reading).map(Some).map_err(BleError::Domain)
+        build_discovered(&reading)
+            .map(Some)
+            .map_err(BleError::Domain)
     }
 }
 
@@ -373,10 +373,11 @@ mod tests {
     #[test]
     fn should_return_none_when_uuid_not_181a() {
         let handler = Lywsd03mmcHandler::new(Vec::new());
-        let unknown_uuid =
-            uuid::Uuid::from_u128(0x0000_FFFF_0000_1000_8000_0080_5F9B_34FB);
+        let unknown_uuid = uuid::Uuid::from_u128(0x0000_FFFF_0000_1000_8000_0080_5F9B_34FB);
         let data = [0u8; 19];
-        let result = handler.try_parse_advertisement(unknown_uuid, &data).unwrap();
+        let result = handler
+            .try_parse_advertisement(unknown_uuid, &data)
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -384,9 +385,8 @@ mod tests {
     fn should_return_discovered_when_advertisement_is_valid() {
         let handler = Lywsd03mmcHandler::new(Vec::new());
         let data: [u8; 19] = [
-            0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF,
-            0x06, 0x09, 0xA0, 0x0F, 0x3A, 0x0C,
-            0x64, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF, 0x06, 0x09, 0xA0, 0x0F, 0x3A, 0x0C, 0x64, 0x03,
+            0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let result = handler
             .try_parse_advertisement(ServiceUuid::ATC1441, &data)
@@ -398,12 +398,10 @@ mod tests {
 
     #[test]
     fn should_return_none_when_mac_filtered_out() {
-        let handler =
-            Lywsd03mmcHandler::new(vec!["11:22:33:44:55:66".to_owned()]);
+        let handler = Lywsd03mmcHandler::new(vec!["11:22:33:44:55:66".to_owned()]);
         let data: [u8; 19] = [
-            0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF,
-            0x06, 0x09, 0xA0, 0x0F, 0x3A, 0x0C,
-            0x64, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF, 0x06, 0x09, 0xA0, 0x0F, 0x3A, 0x0C, 0x64, 0x03,
+            0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let result = handler
             .try_parse_advertisement(ServiceUuid::ATC1441, &data)
@@ -430,16 +428,14 @@ mod tests {
 
     #[test]
     fn should_accept_matching_mac_in_filter() {
-        let handler =
-            Lywsd03mmcHandler::new(vec!["C4:7C:8D:6A:12:34".to_owned()]);
+        let handler = Lywsd03mmcHandler::new(vec!["C4:7C:8D:6A:12:34".to_owned()]);
         assert!(handler.passes_filter("C4:7C:8D:6A:12:34"));
         assert!(!handler.passes_filter("AA:BB:CC:DD:EE:FF"));
     }
 
     #[test]
     fn should_match_filter_case_insensitively() {
-        let handler =
-            Lywsd03mmcHandler::new(vec!["c4:7c:8d:6a:12:34".to_owned()]);
+        let handler = Lywsd03mmcHandler::new(vec!["c4:7c:8d:6a:12:34".to_owned()]);
         assert!(handler.passes_filter("C4:7C:8D:6A:12:34"));
         assert!(handler.passes_filter("c4:7c:8d:6a:12:34"));
     }

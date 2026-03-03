@@ -320,7 +320,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::broadcast;
 
-    use crate::devices::lywsd03mmc::{build_discovered, SensorReading};
+    use crate::devices::lywsd03mmc::{SensorReading, build_discovered};
 
     struct NoOpContext;
 

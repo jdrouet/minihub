@@ -101,7 +101,10 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                             continue;
                         }
 
-                        tracing::debug!(handler = self.lywsd.name(), "persisting BLE sensor reading");
+                        tracing::debug!(
+                            handler = self.lywsd.name(),
+                            "persisting BLE sensor reading"
+                        );
                         if let Err(err) = self.context.persist_discovered(dd).await {
                             tracing::warn!(%err, "failed to persist BLE discovery");
                         }
