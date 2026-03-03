@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/jdrouet/minihub/releases/tag/minihub-adapter-virtual-v0.1.1) - 2026-03-03
+
+### Added
+
+- device deduplication via integration + unique_id fields
+- *(virtual)* add adapter_virtual crate with simulated devices
+
+### Fixed
+
+- *(virtual)* remove unwrap from non-test code in virtual adapter
+
+### Other
+
+- release v0.1.1
+- *(app)* rename get_entity to find_entity_by_id on IntegrationContext
+- *(ble)* replace in-memory EntityMacMap with database-backed mac_address
+- implement subscribe() in adapter test mocks
+- release v0.1.0
+- *(virtual)* adapt to IntegrationContext-based Integration trait
+
 ## [0.1.0](https://github.com/jdrouet/minihub/releases/tag/minihub-adapter-virtual-v0.1.0) - 2026-02-23
 
 ### Added
