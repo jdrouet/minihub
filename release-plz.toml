@@ -7,3 +7,6 @@ git_only = true
 # Tag per package: e.g. minihub-domain-v0.1.0
 git_tag_name = "{{ package }}-v{{ version }}"
 git_release_name = "{{ package }}-v{{ version }}"
+# Disable built-in semver check (cargo package incompatible with unpublished path deps).
+# Semver checks run in a separate CI job instead.
+semver_check = false
