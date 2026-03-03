@@ -4,3 +4,6 @@ publish = false
 git_release_enable = true
 # Use git tags (not crates.io registry) to detect the current version.
 git_only = true
+# Tag per package: e.g. minihub-domain-v0.1.0
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_name = "{{ package }}-v{{ version }}"
