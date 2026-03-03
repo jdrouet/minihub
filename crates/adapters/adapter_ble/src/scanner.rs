@@ -4,6 +4,7 @@
 //! Each advertisement is persisted via the [`IntegrationContext`] as soon as
 //! it is received.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
@@ -16,6 +17,7 @@ use minihub_domain::event::{Event, EventType};
 
 use crate::devices::{BleDeviceHandler, Lywsd03mmcHandler, MifloraHandler};
 use crate::error::BleError;
+use crate::parser::ServiceUuid;
 
 /// BLE scanner that discovers sensors via passive advertisements and,
 /// optionally, reads Mi Flora plant sensors via active GATT connections.
@@ -97,8 +99,20 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                         };
 
                         // Verify the peripheral exists before persisting
-                        if central.peripheral(&id).await.is_err() {
+                        let Ok(peripheral) = central.peripheral(&id).await else {
                             continue;
+                        };
+
+                        // Skip peripherals that also advertise MiBeacon (0xFE95) —
+                        // they are Mi Flora devices handled in the active GATT phase.
+                        if let Ok(Some(props)) = peripheral.properties().await {
+                            if is_mibeacon_peripheral(&props.service_data) {
+                                tracing::debug!(
+                                    handler = self.lywsd.name(),
+                                    "skipping MiBeacon peripheral (handled by Mi Flora active scan)"
+                                );
+                                continue;
+                            }
                         }
 
                         tracing::debug!(
@@ -148,5 +162,45 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
         }
 
         Ok(())
+    }
+}
+
+/// Returns `true` if the peripheral's service data contains a `MiBeacon`
+/// (`0xFE95`) entry, indicating it is a Mi Flora device that should be
+/// handled by the active GATT phase rather than the passive scan.
+fn is_mibeacon_peripheral(service_data: &HashMap<uuid::Uuid, Vec<u8>>) -> bool {
+    service_data.contains_key(&ServiceUuid::MIFLORA)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_detect_mibeacon_peripheral_when_fe95_present() {
+        let mut service_data = HashMap::new();
+        service_data.insert(ServiceUuid::MIFLORA, vec![0x71, 0x20, 0x98, 0x00]);
+        assert!(is_mibeacon_peripheral(&service_data));
+    }
+
+    #[test]
+    fn should_not_detect_mibeacon_peripheral_when_only_181a() {
+        let mut service_data = HashMap::new();
+        service_data.insert(ServiceUuid::ATC1441, vec![0u8; 19]);
+        assert!(!is_mibeacon_peripheral(&service_data));
+    }
+
+    #[test]
+    fn should_detect_mibeacon_peripheral_when_both_uuids_present() {
+        let mut service_data = HashMap::new();
+        service_data.insert(ServiceUuid::ATC1441, vec![0u8; 19]);
+        service_data.insert(ServiceUuid::MIFLORA, vec![0x71, 0x20, 0x98, 0x00]);
+        assert!(is_mibeacon_peripheral(&service_data));
+    }
+
+    #[test]
+    fn should_not_detect_mibeacon_peripheral_when_empty() {
+        let service_data = HashMap::new();
+        assert!(!is_mibeacon_peripheral(&service_data));
     }
 }
