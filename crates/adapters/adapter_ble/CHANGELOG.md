@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/jdrouet/minihub/compare/minihub-adapter-ble-v0.1.1...minihub-adapter-ble-v0.1.2) - 2026-03-03
+
+### Fixed
+
+- clippy issues
+
+### Other
+
+- format code
+
 ## [0.1.1](https://github.com/jdrouet/minihub/releases/tag/minihub-adapter-ble-v0.1.1) - 2026-03-03
 
 ### Added
