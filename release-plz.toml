@@ -10,3 +10,4 @@ git_release_name = "{{ package }}-v{{ version }}"
 # Disable built-in semver check (cargo package incompatible with unpublished path deps).
 # Semver checks run in a separate CI job instead.
 semver_check = false
+publish_no_verify = true
