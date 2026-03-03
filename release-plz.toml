@@ -2,3 +2,5 @@
 # Don't publish to crates.io — git tags + GitHub releases only.
 publish = false
 git_release_enable = true
+# Use git tags (not crates.io registry) to detect the current version.
+git_only = true
