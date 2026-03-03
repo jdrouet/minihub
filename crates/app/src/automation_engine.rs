@@ -183,7 +183,7 @@ mod tests {
     use std::future::Future;
     use std::sync::Mutex;
 
-    // ── In-memory automation repo ──────────────────────────────────
+    // In-memory automation repo
 
     struct InMemoryAutomationRepo {
         store: Mutex<HashMap<AutomationId, Automation>>,
@@ -245,7 +245,7 @@ mod tests {
         }
     }
 
-    // ── In-memory entity repo ──────────────────────────────────────
+    // In-memory entity repo
 
     struct InMemoryEntityRepo {
         store: Mutex<HashMap<EntityId, Entity>>,
@@ -317,7 +317,7 @@ mod tests {
         }
     }
 
-    // ── Spy publisher ──────────────────────────────────────────────
+    // Spy publisher
 
     struct SpyPublisher {
         events: Mutex<Vec<Event>>,
@@ -338,7 +338,7 @@ mod tests {
         }
     }
 
-    // ── Helpers ────────────────────────────────────────────────────
+    // Helpers
 
     fn light_entity(id: EntityId, state: EntityState) -> Entity {
         Entity::builder()
@@ -369,7 +369,7 @@ mod tests {
         )
     }
 
-    // ── Tests ──────────────────────────────────────────────────────
+    // Tests
 
     #[tokio::test]
     async fn should_trigger_automation_when_event_matches() {
