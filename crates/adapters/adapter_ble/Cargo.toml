@@ -1,7 +1,7 @@
 [package]
 name = "minihub-adapter-ble"
 description = "BLE adapter — scans for BLE sensor advertisements and reads Mi Flora plant sensors via GATT."
-version = "0.1.1"
+version = "0.1.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
