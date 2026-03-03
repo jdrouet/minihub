@@ -26,9 +26,8 @@
 //! Same as other adapters: depends on `minihub-app` and `minihub-domain`.
 
 mod config;
+mod devices;
 mod error;
-pub mod gatt;
-pub mod miflora;
 pub mod parser;
 mod scanner;
 
@@ -49,6 +48,7 @@ use minihub_domain::error::{MiniHubError, NotFoundError};
 use minihub_domain::event::{Event, EventType};
 use minihub_domain::id::EntityId;
 
+use crate::devices::{Lywsd03mmcHandler, MifloraHandler};
 use crate::parser::ServiceUuid;
 use crate::scanner::BleScanner;
 
@@ -95,20 +95,23 @@ impl Integration for BleIntegration {
     ) -> Result<(), MiniHubError> {
         let scan_duration = Duration::from_secs(u64::from(self.config.scan_duration_secs));
         let interval = Duration::from_secs(u64::from(self.config.update_interval_secs));
-        let device_filter = self.config.device_filter.clone();
-        let miflora_enabled = self.config.miflora_enabled;
-        let miflora_filter = self.config.miflora_filter.clone();
-        let miflora_connect_timeout =
-            Duration::from_secs(u64::from(self.config.miflora_connect_timeout_secs));
+
+        let lywsd = Lywsd03mmcHandler::new(self.config.device_filter.clone());
+        let miflora = if self.config.miflora_enabled {
+            Some(MifloraHandler::new(
+                self.config.miflora_filter.clone(),
+                Duration::from_secs(u64::from(self.config.miflora_connect_timeout_secs)),
+            ))
+        } else {
+            None
+        };
 
         self.scan_handle = Some(BleScanner::start(
             ctx.clone(),
             scan_duration,
             interval,
-            device_filter,
-            miflora_enabled,
-            miflora_filter,
-            miflora_connect_timeout,
+            lywsd,
+            miflora,
         ));
 
         let subscriber_ctx = ctx;
@@ -255,7 +258,7 @@ async fn run_event_subscriber(ctx: impl IntegrationContext + 'static) {
 }
 
 /// Perform a short BLE scan to find the peripheral with the given MAC,
-/// then call [`gatt::blink_miflora`] on it.
+/// then call [`devices::miflora::blink_miflora`] on it.
 async fn handle_blink(mac: [u8; 6]) -> Result<(), BleError> {
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
@@ -291,12 +294,12 @@ async fn handle_blink(mac: [u8; 6]) -> Result<(), BleError> {
             continue;
         };
 
-        let Ok(parsed_mac) = miflora::parse_mibeacon_mac(mibeacon_data) else {
+        let Ok(parsed_mac) = devices::parse_mibeacon_mac(mibeacon_data) else {
             continue;
         };
 
         if parsed_mac == mac {
-            return gatt::blink_miflora(peripheral).await;
+            return devices::blink_miflora(peripheral).await;
         }
     }
 
@@ -316,6 +319,8 @@ mod tests {
     use minihub_domain::id::DeviceId;
     use std::sync::Arc;
     use tokio::sync::broadcast;
+
+    use crate::devices::lywsd03mmc::{build_discovered, SensorReading};
 
     struct NoOpContext;
 
@@ -437,7 +442,7 @@ mod tests {
 
     #[test]
     fn should_build_discovered_device_from_reading() {
-        let reading = parser::SensorReading {
+        let reading = SensorReading {
             mac: [0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF],
             temperature: 23.1,
             humidity: 45.0,
@@ -445,7 +450,7 @@ mod tests {
             battery_voltage: 3.05,
         };
 
-        let dd = scanner::build_discovered(&reading).unwrap();
+        let dd = build_discovered(&reading).unwrap();
         assert_eq!(dd.device.name, "LYWSD03MMC A4:C1:38:5B:0E:DF");
         assert_eq!(dd.device.manufacturer.as_deref(), Some("Xiaomi"));
         assert_eq!(dd.device.model.as_deref(), Some("LYWSD03MMC"));

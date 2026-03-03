@@ -1,11 +1,13 @@
-//! Mi Flora (HHCCJCY01) payload parsers and domain mapping.
+//! Xiaomi Mi Flora (HHCCJCY01) plant sensor handler.
 //!
-//! Mi Flora plant sensors require active GATT connections to read data.
-//! This module provides:
-//!
-//! - GATT characteristic UUID constants (`CMD_CHAR`, `DATA_CHAR`, `FIRMWARE_CHAR`)
-//! - Pure parser functions for the 16-byte sensor DATA and 7-byte FIRMWARE payloads
-//! - A [`build_discovered`] function to map a [`MifloraReading`] into domain types
+//! Mi Flora sensors require active GATT connections to read data. This module
+//! provides payload parsers, GATT readout logic, and the [`MifloraHandler`]
+//! that implements [`BleDeviceHandler`].
+
+use std::time::Duration;
+
+use btleplug::api::{Central, Characteristic, Peripheral as _, WriteType};
+use btleplug::platform::{Adapter, Peripheral};
 
 use minihub_app::ports::integration::DiscoveredDevice;
 use minihub_domain::device::Device;
@@ -13,55 +15,175 @@ use minihub_domain::entity::{AttributeValue, Entity, EntityState};
 use minihub_domain::error::MiniHubError;
 
 use crate::error::{BleError, PayloadParseError};
-use crate::parser;
+use crate::parser::{self, ServiceUuid};
+
+use super::BleDeviceHandler;
+
+// GATT characteristic UUIDs
 
 /// GATT characteristic UUID for the Mi Flora CMD register (write `[0xa0, 0x1f]` to activate).
-pub const CMD_CHAR: uuid::Uuid = uuid::Uuid::from_u128(0x0000_1a00_0000_1000_8000_0080_5f9b_34fb);
+const CMD_CHAR: uuid::Uuid = uuid::Uuid::from_u128(0x0000_1a00_0000_1000_8000_0080_5f9b_34fb);
 
 /// GATT characteristic UUID for the Mi Flora DATA register (16-byte sensor payload).
-pub const DATA_CHAR: uuid::Uuid = uuid::Uuid::from_u128(0x0000_1a01_0000_1000_8000_0080_5f9b_34fb);
+const DATA_CHAR: uuid::Uuid = uuid::Uuid::from_u128(0x0000_1a01_0000_1000_8000_0080_5f9b_34fb);
 
 /// GATT characteristic UUID for the Mi Flora FIRMWARE register (7-byte battery + version).
-pub const FIRMWARE_CHAR: uuid::Uuid =
-    uuid::Uuid::from_u128(0x0000_1a02_0000_1000_8000_0080_5f9b_34fb);
+const FIRMWARE_CHAR: uuid::Uuid = uuid::Uuid::from_u128(0x0000_1a02_0000_1000_8000_0080_5f9b_34fb);
+
+/// Command bytes to write to the CMD characteristic to activate sensor mode.
+const ACTIVATE_CMD: &[u8] = &[0xa0, 0x1f];
+
+/// Command bytes to write to the CMD characteristic to blink the LED.
+const BLINK_CMD: &[u8] = &[0xfd, 0xff];
+
+/// The local name advertised by Mi Flora peripherals.
+const MIFLORA_LOCAL_NAME: &str = "Flower care";
+
+// Payload constants
 
 const MIBEACON_MIN_LEN: usize = 13;
 const MIBEACON_MAC_OFFSET: usize = 7;
 const DATA_LEN: usize = 16;
 const FIRMWARE_LEN: usize = 7;
 
+// Data types
+
 /// Parsed sensor data from the 16-byte DATA characteristic.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MifloraSensorData {
-    /// Temperature in degrees Celsius.
+pub(crate) struct MifloraSensorData {
     pub temperature: f64,
-    /// Light intensity in lux.
     pub light: u32,
-    /// Soil moisture percentage (0–100).
     pub moisture: u8,
-    /// Soil conductivity in µS/cm.
     pub conductivity: u16,
 }
 
 /// Parsed firmware info from the 7-byte FIRMWARE characteristic.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MifloraFirmware {
-    /// Battery level percentage (0–100).
+pub(crate) struct MifloraFirmware {
     pub battery_level: u8,
-    /// Firmware version string (e.g. `"3.1.8"`).
     pub firmware_version: String,
 }
 
 /// Combined reading from a single Mi Flora device.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MifloraReading {
-    /// Device MAC address (6 bytes).
+pub(crate) struct MifloraReading {
     pub mac: [u8; 6],
-    /// Sensor data from the DATA characteristic.
     pub sensor: MifloraSensorData,
-    /// Firmware info from the FIRMWARE characteristic.
     pub firmware: MifloraFirmware,
 }
+
+// Handler
+
+/// Handler for Xiaomi Mi Flora plant sensors.
+pub(crate) struct MifloraHandler {
+    filter: Vec<String>,
+    connect_timeout: Duration,
+}
+
+impl MifloraHandler {
+    pub(crate) fn new(filter: Vec<String>, connect_timeout: Duration) -> Self {
+        Self {
+            filter,
+            connect_timeout,
+        }
+    }
+
+    fn passes_filter(&self, mac: &str) -> bool {
+        if self.filter.is_empty() {
+            return true;
+        }
+        self.filter.iter().any(|f| f.eq_ignore_ascii_case(mac))
+    }
+}
+
+impl BleDeviceHandler for MifloraHandler {
+    fn name(&self) -> &'static str {
+        "Mi Flora"
+    }
+
+    fn try_parse_advertisement(
+        &self,
+        _uuid: uuid::Uuid,
+        _data: &[u8],
+    ) -> Result<Option<DiscoveredDevice>, BleError> {
+        // Mi Flora uses active GATT, not passive advertisements.
+        Ok(None)
+    }
+
+    async fn process_after_scan(&self, adapter: &Adapter) -> Vec<DiscoveredDevice> {
+        let peripherals = match adapter.peripherals().await {
+            Ok(list) => list,
+            Err(err) => {
+                tracing::warn!(%err, "failed to list peripherals for Mi Flora readout");
+                return Vec::new();
+            }
+        };
+
+        let mut discovered = Vec::new();
+
+        for peripheral in &peripherals {
+            let Ok(Some(props)) = peripheral.properties().await else {
+                continue;
+            };
+
+            let name_matches = props
+                .local_name
+                .as_deref()
+                .is_some_and(|name| name == MIFLORA_LOCAL_NAME);
+            if !name_matches {
+                continue;
+            }
+
+            let Some(mibeacon_data) = props.service_data.get(&ServiceUuid::MIFLORA) else {
+                tracing::debug!("Mi Flora peripheral has no 0xFE95 service data, skipping");
+                continue;
+            };
+
+            let mac_bytes = match parse_mibeacon_mac(mibeacon_data) {
+                Ok(mac) => mac,
+                Err(err) => {
+                    tracing::warn!(%err, "failed to parse Mi Flora MAC from MiBeacon payload");
+                    continue;
+                }
+            };
+
+            let mac_str = parser::format_mac(mac_bytes);
+            if !self.passes_filter(&mac_str) {
+                tracing::debug!(mac = %mac_str, "Mi Flora filtered out by miflora_filter");
+                continue;
+            }
+
+            tracing::debug!(mac = %mac_str, "reading Mi Flora sensor via GATT");
+
+            let result =
+                tokio::time::timeout(self.connect_timeout, read_miflora(peripheral, mac_bytes))
+                    .await;
+
+            let reading = match result {
+                Ok(Ok(reading)) => reading,
+                Ok(Err(err)) => {
+                    tracing::warn!(%err, mac = %mac_str, "failed to read Mi Flora device");
+                    continue;
+                }
+                Err(_) => {
+                    tracing::warn!(mac = %mac_str, "Mi Flora GATT readout timed out");
+                    continue;
+                }
+            };
+
+            match build_discovered(&reading) {
+                Ok(dd) => discovered.push(dd),
+                Err(err) => {
+                    tracing::warn!(%err, mac = %mac_str, "failed to build Mi Flora discovered device");
+                }
+            }
+        }
+
+        discovered
+    }
+}
+
+// Payload parsers
 
 /// Extract the 6-byte MAC address from a `MiBeacon` `0xFE95` service data payload.
 ///
@@ -72,7 +194,7 @@ pub struct MifloraReading {
 /// # Errors
 ///
 /// Returns [`BleError::PayloadParse`] when the payload is shorter than 13 bytes.
-pub fn parse_mibeacon_mac(data: &[u8]) -> Result<[u8; 6], BleError> {
+pub(crate) fn parse_mibeacon_mac(data: &[u8]) -> Result<[u8; 6], BleError> {
     if data.len() < MIBEACON_MIN_LEN {
         return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
             format: "MiBeacon",
@@ -95,11 +217,7 @@ pub fn parse_mibeacon_mac(data: &[u8]) -> Result<[u8; 6], BleError> {
 /// | 7 | u8 (%) | Moisture |
 /// | 8–9 | u16 LE (µS/cm) | Conductivity |
 /// | 10–15 | — | Reserved |
-///
-/// # Errors
-///
-/// Returns [`BleError::PayloadParse`] when the slice length is not 16.
-pub fn parse_sensor_data(data: &[u8]) -> Result<MifloraSensorData, BleError> {
+fn parse_sensor_data(data: &[u8]) -> Result<MifloraSensorData, BleError> {
     if data.len() != DATA_LEN {
         return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
             format: "Mi Flora DATA",
@@ -128,11 +246,7 @@ pub fn parse_sensor_data(data: &[u8]) -> Result<MifloraSensorData, BleError> {
 /// | 0 | u8 (%) | Battery level |
 /// | 1 | — | Separator |
 /// | 2–6 | ASCII | Firmware version |
-///
-/// # Errors
-///
-/// Returns [`BleError::PayloadParse`] when the slice length is not 7.
-pub fn parse_firmware(data: &[u8]) -> Result<MifloraFirmware, BleError> {
+fn parse_firmware(data: &[u8]) -> Result<MifloraFirmware, BleError> {
     if data.len() != FIRMWARE_LEN {
         return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
             format: "Mi Flora FIRMWARE",
@@ -150,15 +264,10 @@ pub fn parse_firmware(data: &[u8]) -> Result<MifloraFirmware, BleError> {
     })
 }
 
+// Domain mapping
+
 /// Build a [`DiscoveredDevice`] from a [`MifloraReading`].
-///
-/// Creates a device named `"Mi Flora {MAC}"` with manufacturer `"Xiaomi"`,
-/// model `"HHCCJCY01"`, and a single entity carrying all sensor attributes.
-///
-/// # Errors
-///
-/// Returns [`MiniHubError`] if domain validation fails.
-pub fn build_discovered(reading: &MifloraReading) -> Result<DiscoveredDevice, MiniHubError> {
+fn build_discovered(reading: &MifloraReading) -> Result<DiscoveredDevice, MiniHubError> {
     let mac_str = parser::format_mac(reading.mac);
     let slug = parser::mac_slug(reading.mac);
 
@@ -208,24 +317,107 @@ pub fn build_discovered(reading: &MifloraReading) -> Result<DiscoveredDevice, Mi
     })
 }
 
+// GATT operations
+
+/// Find a GATT characteristic by UUID on a peripheral that has already
+/// discovered its services.
+fn find_characteristic(
+    peripheral: &Peripheral,
+    uuid: uuid::Uuid,
+) -> Result<Characteristic, BleError> {
+    peripheral
+        .characteristics()
+        .into_iter()
+        .find(|c| c.uuid == uuid)
+        .ok_or(BleError::CharacteristicNotFound { uuid })
+}
+
+/// Connect to a Mi Flora peripheral, read sensor data and firmware info,
+/// and return a [`MifloraReading`].
+///
+/// The connection is always closed on return, even if a read fails. The
+/// caller is responsible for applying a per-device timeout around this
+/// function.
+async fn read_miflora(peripheral: &Peripheral, mac: [u8; 6]) -> Result<MifloraReading, BleError> {
+    peripheral.connect().await.map_err(BleError::GattConnect)?;
+
+    let result = read_miflora_inner(peripheral, mac).await;
+
+    if let Err(err) = peripheral.disconnect().await {
+        tracing::warn!(%err, "failed to disconnect Mi Flora peripheral");
+    }
+
+    result
+}
+
+async fn read_miflora_inner(
+    peripheral: &Peripheral,
+    mac: [u8; 6],
+) -> Result<MifloraReading, BleError> {
+    peripheral.discover_services().await?;
+
+    let cmd_char = find_characteristic(peripheral, CMD_CHAR)?;
+    let data_char = find_characteristic(peripheral, DATA_CHAR)?;
+    let firmware_char = find_characteristic(peripheral, FIRMWARE_CHAR)?;
+
+    peripheral
+        .write(&cmd_char, ACTIVATE_CMD, WriteType::WithResponse)
+        .await?;
+
+    let data_bytes = peripheral.read(&data_char).await?;
+    let firmware_bytes = peripheral.read(&firmware_char).await?;
+
+    let sensor = parse_sensor_data(&data_bytes)?;
+    let firmware = parse_firmware(&firmware_bytes)?;
+
+    Ok(MifloraReading {
+        mac,
+        sensor,
+        firmware,
+    })
+}
+
+/// Connect to a Mi Flora peripheral, write the blink LED command, and
+/// disconnect.
+///
+/// The connection is always closed on return, even if the write fails.
+pub(crate) async fn blink_miflora(peripheral: &Peripheral) -> Result<(), BleError> {
+    peripheral.connect().await.map_err(BleError::GattConnect)?;
+
+    let result = blink_miflora_inner(peripheral).await;
+
+    if let Err(err) = peripheral.disconnect().await {
+        tracing::warn!(%err, "failed to disconnect Mi Flora peripheral after blink");
+    }
+
+    result
+}
+
+async fn blink_miflora_inner(peripheral: &Peripheral) -> Result<(), BleError> {
+    peripheral.discover_services().await?;
+
+    let cmd_char = find_characteristic(peripheral, CMD_CHAR)?;
+
+    peripheral
+        .write(&cmd_char, BLINK_CMD, WriteType::WithResponse)
+        .await?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn sample_data_payload() -> [u8; 16] {
         let mut data = [0u8; 16];
-        // temp: 201 (0x00C9) LE → 20.1 °C
         data[0] = 0xC9;
         data[1] = 0x00;
-        // padding byte 2
-        // light: 82_386 (0x000141D2) LE → bytes [0xD2, 0x41, 0x01, 0x00]
         data[3] = 0xD2;
         data[4] = 0x41;
         data[5] = 0x01;
         data[6] = 0x00;
-        // moisture: 56%
         data[7] = 0x38;
-        // conductivity: 1561 (0x0619) LE → [0x19, 0x06]
         data[8] = 0x19;
         data[9] = 0x06;
         data
@@ -235,7 +427,7 @@ mod tests {
         [
             0x63, // battery: 99%
             0x13, // separator
-            b'3', b'.', b'1', b'.', b'8', // firmware "3.1.8"
+            b'3', b'.', b'1', b'.', b'8',
         ]
     }
 
@@ -255,7 +447,7 @@ mod tests {
         }
     }
 
-    // ── Sensor data parsing ─────────────────────────────────────────────
+    // Sensor data parsing
 
     #[test]
     fn should_parse_sensor_data_with_positive_temperature() {
@@ -270,10 +462,9 @@ mod tests {
     #[test]
     fn should_parse_sensor_data_with_negative_temperature() {
         let mut data = [0u8; 16];
-        // temp: -32 (0xFFE0) LE → -3.2 °C
         data[0] = 0xE0;
         data[1] = 0xFF;
-        data[7] = 10; // moisture
+        data[7] = 10;
         let result = parse_sensor_data(&data).unwrap();
         assert!((result.temperature - (-3.2)).abs() < 0.01);
         assert_eq!(result.moisture, 10);
@@ -292,7 +483,6 @@ mod tests {
     #[test]
     fn should_parse_sensor_data_with_max_light() {
         let mut data = [0u8; 16];
-        // max u32 in bytes 3-6
         data[3] = 0xFF;
         data[4] = 0xFF;
         data[5] = 0xFF;
@@ -326,7 +516,7 @@ mod tests {
         assert!(source.to_string().contains("16 bytes"));
     }
 
-    // ── Firmware parsing ────────────────────────────────────────────────
+    // Firmware parsing
 
     #[test]
     fn should_parse_firmware_payload() {
@@ -344,7 +534,7 @@ mod tests {
         assert!(source.to_string().contains("7 bytes"));
     }
 
-    // ── UUID constants ──────────────────────────────────────────────────
+    // UUID constants
 
     #[test]
     fn should_have_correct_gatt_uuids() {
@@ -353,19 +543,22 @@ mod tests {
         assert!(FIRMWARE_CHAR.to_string().contains("00001a02"));
     }
 
-    // ── MiBeacon MAC parsing ───────────────────────────────────────────
+    #[test]
+    fn should_have_correct_activate_command() {
+        assert_eq!(ACTIVATE_CMD, &[0xa0, 0x1f]);
+    }
+
+    #[test]
+    fn should_have_correct_blink_command() {
+        assert_eq!(BLINK_CMD, &[0xfd, 0xff]);
+    }
+
+    // MiBeacon MAC parsing
 
     #[test]
     fn should_parse_mibeacon_mac_from_service_data() {
-        // MiBeacon payload: 2 bytes frame ctrl, 2 bytes product id, 1 byte counter,
-        // 2 bytes padding, then 6 bytes MAC reversed
-        // MAC C4:7C:8D:6A:12:34 → reversed in payload: [0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4]
         let data: [u8; 13] = [
-            0x71, 0x20, // frame control
-            0x98, 0x00, // product id
-            0x03, // frame counter
-            0x00, 0x00, // padding
-            0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4, // MAC reversed
+            0x71, 0x20, 0x98, 0x00, 0x03, 0x00, 0x00, 0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4,
         ];
         let mac = parse_mibeacon_mac(&data).unwrap();
         assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6A, 0x12, 0x34]);
@@ -392,7 +585,7 @@ mod tests {
         assert!(source.to_string().contains("13 bytes"));
     }
 
-    // ── build_discovered ────────────────────────────────────────────────
+    // build_discovered
 
     #[test]
     fn should_build_discovered_device_from_reading() {
@@ -435,5 +628,44 @@ mod tests {
             entity.get_attribute("firmware"),
             Some(&AttributeValue::String("3.1.8".to_owned()))
         );
+    }
+
+    // Handler trait tests
+
+    #[test]
+    fn should_return_none_for_any_passive_advertisement() {
+        let handler = MifloraHandler::new(Vec::new(), Duration::from_secs(10));
+        let data = [0u8; 19];
+        let result = handler
+            .try_parse_advertisement(ServiceUuid::ATC1441, &data)
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn should_accept_all_when_filter_is_empty() {
+        let handler = MifloraHandler::new(Vec::new(), Duration::from_secs(10));
+        assert!(handler.passes_filter("C4:7C:8D:6A:12:34"));
+        assert!(handler.passes_filter("AA:BB:CC:DD:EE:FF"));
+    }
+
+    #[test]
+    fn should_accept_matching_mac_in_filter() {
+        let handler = MifloraHandler::new(
+            vec!["C4:7C:8D:6A:12:34".to_owned()],
+            Duration::from_secs(10),
+        );
+        assert!(handler.passes_filter("C4:7C:8D:6A:12:34"));
+        assert!(!handler.passes_filter("AA:BB:CC:DD:EE:FF"));
+    }
+
+    #[test]
+    fn should_match_filter_case_insensitively() {
+        let handler = MifloraHandler::new(
+            vec!["c4:7c:8d:6a:12:34".to_owned()],
+            Duration::from_secs(10),
+        );
+        assert!(handler.passes_filter("C4:7C:8D:6A:12:34"));
+        assert!(handler.passes_filter("c4:7c:8d:6a:12:34"));
     }
 }
