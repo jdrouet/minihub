@@ -106,13 +106,14 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                         // Skip peripherals that also advertise MiBeacon (0xFE95) —
                         // they are Mi Flora devices handled in the active GATT phase.
                         if let Ok(Some(props)) = peripheral.properties().await
-                            && is_mibeacon_peripheral(&props.service_data) {
-                                tracing::debug!(
-                                    handler = self.lywsd.name(),
-                                    "skipping MiBeacon peripheral (handled by Mi Flora active scan)"
-                                );
-                                continue;
-                            }
+                            && is_mibeacon_peripheral(&props.service_data)
+                        {
+                            tracing::debug!(
+                                handler = self.lywsd.name(),
+                                "skipping MiBeacon peripheral (handled by Mi Flora active scan)"
+                            );
+                            continue;
+                        }
 
                         tracing::debug!(
                             handler = self.lywsd.name(),
@@ -125,23 +126,24 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
                 }
                 Ok(Some(CentralEvent::DeviceDiscovered(id))) => {
                     if let Ok(peripheral) = central.peripheral(&id).await
-                        && let Ok(Some(props)) = peripheral.properties().await {
-                            let mac = props.address.to_string();
-                            tracing::trace!(%mac, name = ?props.local_name, "BLE device detected");
-                            let event = Event::new(
-                                EventType::DeviceDetected,
-                                None,
-                                serde_json::json!({
-                                    "integration": "ble",
-                                    "mac": mac,
-                                    "name": props.local_name,
-                                    "rssi": props.rssi,
-                                }),
-                            );
-                            if let Err(err) = self.context.publish(event).await {
-                                tracing::warn!(%err, %mac, "failed to publish device_detected event");
-                            }
+                        && let Ok(Some(props)) = peripheral.properties().await
+                    {
+                        let mac = props.address.to_string();
+                        tracing::trace!(%mac, name = ?props.local_name, "BLE device detected");
+                        let event = Event::new(
+                            EventType::DeviceDetected,
+                            None,
+                            serde_json::json!({
+                                "integration": "ble",
+                                "mac": mac,
+                                "name": props.local_name,
+                                "rssi": props.rssi,
+                            }),
+                        );
+                        if let Err(err) = self.context.publish(event).await {
+                            tracing::warn!(%err, %mac, "failed to publish device_detected event");
                         }
+                    }
                 }
                 Ok(Some(_)) => {}
                 Ok(None) | Err(_) => break,

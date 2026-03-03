@@ -97,27 +97,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         event.event_type,
                         minihub_domain::event::EventType::StateChanged
                             | minihub_domain::event::EventType::AttributeChanged
-                    )
-                        && let Some(entity_id) = event.entity_id {
-                            match entity_svc_for_history.get_entity(entity_id).await {
-                                Ok(entity) => {
-                                    let history =
-                                        minihub_domain::entity_history::EntityHistory::builder()
-                                            .entity_id(entity.id)
-                                            .state(entity.state.clone())
-                                            .attributes(entity.attributes.clone())
-                                            .recorded_at(event.timestamp)
-                                            .build();
+                    ) && let Some(entity_id) = event.entity_id
+                    {
+                        match entity_svc_for_history.get_entity(entity_id).await {
+                            Ok(entity) => {
+                                let history =
+                                    minihub_domain::entity_history::EntityHistory::builder()
+                                        .entity_id(entity.id)
+                                        .state(entity.state.clone())
+                                        .attributes(entity.attributes.clone())
+                                        .recorded_at(event.timestamp)
+                                        .build();
 
-                                    if let Err(err) = hr.record(history).await {
-                                        tracing::warn!(%err, entity_id = %entity_id, "failed to record entity history");
-                                    }
-                                }
-                                Err(err) => {
-                                    tracing::warn!(%err, entity_id = %entity_id, "failed to fetch entity for history recording");
+                                if let Err(err) = hr.record(history).await {
+                                    tracing::warn!(%err, entity_id = %entity_id, "failed to record entity history");
                                 }
                             }
+                            Err(err) => {
+                                tracing::warn!(%err, entity_id = %entity_id, "failed to fetch entity for history recording");
+                            }
                         }
+                    }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!(

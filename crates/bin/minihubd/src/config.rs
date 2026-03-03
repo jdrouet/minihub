@@ -137,16 +137,18 @@ impl Config {
             self.server.host = val;
         }
         if let Ok(val) = std::env::var("MINIHUB_PORT")
-            && let Ok(port) = val.parse() {
+            && let Ok(port) = val.parse()
+        {
+            self.server.port = port;
+        }
+        if let Ok(val) = std::env::var("MINIHUB_BIND")
+            && let Some((host, port)) = val.rsplit_once(':')
+        {
+            self.server.host = host.to_string();
+            if let Ok(port) = port.parse() {
                 self.server.port = port;
             }
-        if let Ok(val) = std::env::var("MINIHUB_BIND")
-            && let Some((host, port)) = val.rsplit_once(':') {
-                self.server.host = host.to_string();
-                if let Ok(port) = port.parse() {
-                    self.server.port = port;
-                }
-            }
+        }
         if let Ok(val) = std::env::var("MINIHUB_DASHBOARD_DIR") {
             self.server.dashboard_dir = Some(val);
         }
@@ -166,27 +168,31 @@ impl Config {
             self.integrations.mqtt.broker_host = val;
         }
         if let Ok(val) = std::env::var("MINIHUB_MQTT_BROKER_PORT")
-            && let Ok(port) = val.parse() {
-                self.integrations.mqtt.broker_port = port;
-            }
+            && let Ok(port) = val.parse()
+        {
+            self.integrations.mqtt.broker_port = port;
+        }
         if let Ok(val) = std::env::var("MINIHUB_BLE_ENABLED") {
             self.integrations.ble.enabled = val == "1" || val.eq_ignore_ascii_case("true");
         }
         if let Ok(val) = std::env::var("MINIHUB_BLE_SCAN_DURATION_SECS")
-            && let Ok(secs) = val.parse() {
-                self.integrations.ble.scan_duration_secs = secs;
-            }
+            && let Ok(secs) = val.parse()
+        {
+            self.integrations.ble.scan_duration_secs = secs;
+        }
         if let Ok(val) = std::env::var("MINIHUB_BLE_MIFLORA_ENABLED") {
             self.integrations.ble.miflora_enabled = val == "1" || val.eq_ignore_ascii_case("true");
         }
         if let Ok(val) = std::env::var("MINIHUB_HISTORY_RETENTION_DAYS")
-            && let Ok(days) = val.parse() {
-                self.history.retention_days = days;
-            }
+            && let Ok(days) = val.parse()
+        {
+            self.history.retention_days = days;
+        }
         if let Ok(val) = std::env::var("MINIHUB_HISTORY_PURGE_INTERVAL_HOURS")
-            && let Ok(hours) = val.parse() {
-                self.history.purge_interval_hours = hours;
-            }
+            && let Ok(hours) = val.parse()
+        {
+            self.history.purge_interval_hours = hours;
+        }
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
