@@ -163,7 +163,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
 
         // Post-scan active phase: GATT-based device handlers.
         if let Some(ref miflora) = self.miflora {
-            for dd in miflora.process_after_scan(&central).await {
+            for dd in miflora.process_after_scan(central).await {
                 if let Err(err) = self.context.persist_discovered(dd).await {
                     tracing::warn!(%err, handler = miflora.name(), "failed to persist discovery");
                 }
