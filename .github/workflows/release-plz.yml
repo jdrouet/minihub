@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - run: sudo apt install libdbus-1-dev pkg-config
       - &checkout
         name: Checkout repository
         uses: actions/checkout@v6
