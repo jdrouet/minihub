@@ -97,17 +97,20 @@ impl Integration for BleIntegration {
         let interval = Duration::from_secs(u64::from(self.config.update_interval_secs));
 
         let lywsd = Lywsd03mmcHandler::new(self.config.device_filter.clone());
-        let miflora = if self.config.miflora_enabled {
-            Some(MifloraHandler::new(
+        let miflora = self.config.miflora_enabled.then(|| {
+            MifloraHandler::new(
                 self.config.miflora_filter.clone(),
                 Duration::from_secs(u64::from(self.config.miflora_connect_timeout_secs)),
-            ))
-        } else {
-            None
-        };
+            )
+        });
+
+        let manager = Manager::new().await.map_err(BleError::Scan)?;
+        let adapter = scanner::acquire_default_adapter(&manager).await?;
 
         self.scan_handle = Some(BleScanner::start(
             ctx.clone(),
+            manager,
+            adapter,
             scan_duration,
             interval,
             lywsd,

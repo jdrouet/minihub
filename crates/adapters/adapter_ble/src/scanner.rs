@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
-use btleplug::platform::Manager;
+use btleplug::platform::{Adapter, Manager};
 use tokio::task::JoinHandle;
 use tokio_stream::StreamExt as _;
 
@@ -28,6 +28,8 @@ use crate::parser::ServiceUuid;
 /// discovered Mi Flora peripherals to read sensor data.
 pub struct BleScanner<C> {
     context: C,
+    manager: Manager,
+    central: Adapter,
     scan_duration: Duration,
     interval: Duration,
     lywsd: Lywsd03mmcHandler,
@@ -38,6 +40,8 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     /// Create a new scanner and spawn it as a background task.
     pub fn start(
         context: C,
+        manager: Manager,
+        central: Adapter,
         scan_duration: Duration,
         interval: Duration,
         lywsd: Lywsd03mmcHandler,
@@ -45,6 +49,8 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     ) -> JoinHandle<()> {
         let scanner = Self {
             context,
+            manager,
+            central,
             scan_duration,
             interval,
             lywsd,
@@ -55,10 +61,17 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     }
 
     /// Continuous scan loop — runs a scan, waits for the interval, repeats.
-    async fn run(self) {
+    async fn run(mut self) {
         loop {
-            if let Err(err) = self.iterate().await {
+            if let Err(err) = self.iterate(&self.central).await {
                 tracing::warn!(%err, "BLE background scan failed, retrying next interval");
+                match acquire_default_adapter(&self.manager).await {
+                    Ok(adapter) => self.central = adapter,
+                    Err(acquire_err) => tracing::warn!(
+                        %acquire_err,
+                        "BLE adapter unavailable during recovery"
+                    ),
+                }
             }
             tokio::time::sleep(self.interval).await;
         }
@@ -73,11 +86,7 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
     ///
     /// Returns [`BleError`] when the BLE adapter is unavailable or the scan
     /// cannot be started.
-    async fn iterate(&self) -> Result<(), BleError> {
-        let manager = Manager::new().await?;
-        let adapters = manager.adapters().await?;
-        let central = adapters.into_iter().next().ok_or(BleError::NotAvailable)?;
-
+    async fn iterate(&self, central: &Adapter) -> Result<(), BleError> {
         let mut events = central.events().await?;
 
         central.start_scan(ScanFilter::default()).await?;
@@ -163,6 +172,12 @@ impl<C: IntegrationContext + Clone + 'static> BleScanner<C> {
 
         Ok(())
     }
+}
+
+/// Acquire the first available BLE adapter from `btleplug`.
+pub(crate) async fn acquire_default_adapter(manager: &Manager) -> Result<Adapter, BleError> {
+    let adapters = manager.adapters().await?;
+    adapters.into_iter().next().ok_or(BleError::NotAvailable)
 }
 
 /// Returns `true` if the peripheral's service data contains a `MiBeacon`
