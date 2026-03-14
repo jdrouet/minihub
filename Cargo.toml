@@ -3,11 +3,11 @@ resolver = "2"
 members = [
     "crates/domain",
     "crates/app",
-    "crates/adapters/adapter_http_axum",
-    "crates/adapters/adapter_storage_sqlite_sqlx",
-    "crates/adapters/adapter_virtual",
-    "crates/adapters/adapter_mqtt",
-    "crates/adapters/adapter_ble",
+    "crates/adapters/http_axum",
+    "crates/adapters/storage_sqlite_sqlx",
+    "crates/adapters/virtual",
+    "crates/adapters/mqtt",
+    "crates/adapters/ble",
     "crates/bin/minihubd",
 ]
 exclude = [
@@ -24,11 +24,11 @@ repository = "https://github.com/jdrouet/minihub"
 # Domain & application crates (internal)
 minihub-domain = { path = "crates/domain", version = "0.1.1" }
 minihub-app = { path = "crates/app", version = "0.1.1" }
-minihub-adapter-http-axum = { path = "crates/adapters/adapter_http_axum", version = "0.1.1" }
-minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/adapter_storage_sqlite_sqlx", version = "0.1.1" }
-minihub-adapter-virtual = { path = "crates/adapters/adapter_virtual", version = "0.1.1" }
-minihub-adapter-mqtt = { path = "crates/adapters/adapter_mqtt", version = "0.1.1" }
-minihub-adapter-ble = { path = "crates/adapters/adapter_ble", version = "0.1.2" }
+minihub-adapter-http-axum = { path = "crates/adapters/http_axum", version = "0.1.1" }
+minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/storage_sqlite_sqlx", version = "0.1.1" }
+minihub-adapter-virtual = { path = "crates/adapters/virtual", version = "0.1.1" }
+minihub-adapter-mqtt = { path = "crates/adapters/mqtt", version = "0.1.1" }
+minihub-adapter-ble = { path = "crates/adapters/ble", version = "0.1.2" }
 
 # External dependencies
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
