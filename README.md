@@ -121,7 +121,7 @@ just run
 
 # Or manually:
 just build-dashboard
-MINIHUB_DASHBOARD_DIR=crates/adapters/adapter_dashboard_leptos/dist cargo run --bin minihubd
+MINIHUB_DASHBOARD_DIR=crates/adapters/dashboard_leptos/dist cargo run --bin minihubd
 ```
 
 The dashboard will be served at `http://localhost:3000/` and the API at `http://localhost:3000/api/*`.

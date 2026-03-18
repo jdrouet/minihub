@@ -360,7 +360,7 @@ The dashboard is a Leptos CSR app compiled entirely to WASM. Do not write JavaSc
 
 ### Leptos component conventions
 
-Dashboard UI lives in `crates/adapters/adapter_dashboard_leptos/`.
+Dashboard UI lives in `crates/adapters/dashboard_leptos/`.
 
 - Components are functions annotated with `#[component]`
 - Use fine-grained signals (`ReadSignal`, `WriteSignal`) — avoid cloning entire state
@@ -381,7 +381,7 @@ cargo install trunk
 rustup target add wasm32-unknown-unknown
 
 # Build dashboard WASM bundle
-trunk build crates/adapters/adapter_dashboard_leptos/index.html
+trunk build crates/adapters/dashboard_leptos/index.html
 
 # Or use just
 just build-dashboard

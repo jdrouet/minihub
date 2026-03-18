@@ -350,14 +350,14 @@ Let's say you want to add a **Zigbee adapter** to control Zigbee devices.
 ### Step 1: Create a New Adapter Crate
 
 ```bash
-mkdir -p crates/adapters/adapter_zigbee
-cd crates/adapters/adapter_zigbee
+mkdir -p crates/adapters/zigbee
+cd crates/adapters/zigbee
 cargo init --lib
 ```
 
 ### Step 2: Add Dependencies
 
-In `crates/adapters/adapter_zigbee/Cargo.toml`:
+In `crates/adapters/zigbee/Cargo.toml`:
 
 ```toml
 [package]
@@ -374,7 +374,7 @@ tokio = { version = "1", features = ["full"] }
 
 ### Step 3: Implement Port Traits from `minihub-app`
 
-In `crates/adapters/adapter_zigbee/src/lib.rs`:
+In `crates/adapters/zigbee/src/lib.rs`:
 
 ```rust
 use minihub_app::ports::{DeviceController, EventBus};
@@ -441,18 +441,18 @@ In root `Cargo.toml`:
 [workspace]
 members = [
     # ... existing members ...
-    "crates/adapters/adapter_zigbee",
-    # NOTE: adapter_dashboard_leptos is NOT a workspace member — it is
+    "crates/adapters/zigbee",
+    # NOTE: dashboard_leptos is NOT a workspace member — it is
     # compiled separately to wasm32-unknown-unknown via trunk.
 ]
 
 [workspace.dependencies]
-minihub-adapter-zigbee = { path = "crates/adapters/adapter_zigbee" }
+minihub-adapter-zigbee = { path = "crates/adapters/zigbee" }
 ```
 
 ### Step 6: Test Independently
 
-Write integration tests in `crates/adapters/adapter_zigbee/tests/`:
+Write integration tests in `crates/adapters/zigbee/tests/`:
 
 ```rust
 #[tokio::test]

@@ -30,7 +30,7 @@ check: fmt-check clippy test
 
 # Build the Leptos dashboard WASM bundle
 build-dashboard:
-    cd crates/adapters/adapter_dashboard_leptos && trunk build --release
+    cd crates/adapters/dashboard_leptos && trunk build --release
 
 # Build minihubd binary
 build-minihubd:
@@ -42,8 +42,8 @@ build-all: build-dashboard build-minihubd
 # Clean build artifacts
 clean:
     cargo clean
-    rm -rf crates/adapters/adapter_dashboard_leptos/dist
+    rm -rf crates/adapters/dashboard_leptos/dist
 
 # Run minihubd with the built dashboard
 run: build-dashboard
-    MINIHUB_DASHBOARD_DIR=crates/adapters/adapter_dashboard_leptos/dist cargo run --bin minihubd
+    MINIHUB_DASHBOARD_DIR=crates/adapters/dashboard_leptos/dist cargo run --bin minihubd

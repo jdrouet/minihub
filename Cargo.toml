@@ -11,7 +11,7 @@ members = [
     "crates/bin/minihubd",
 ]
 exclude = [
-    "crates/adapters/adapter_dashboard_leptos",
+    "crates/adapters/dashboard_leptos",
 ]
 
 [workspace.package]

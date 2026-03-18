@@ -9,26 +9,26 @@ WORKDIR /code
 COPY Cargo.toml Cargo.lock /code/
 COPY crates/domain /code/crates/domain
 COPY crates/app/Cargo.toml /code/crates/app/Cargo.toml
-COPY crates/adapters/adapter_dashboard_leptos /code/crates/adapters/adapter_dashboard_leptos
-COPY crates/adapters/adapter_http_axum/Cargo.toml /code/crates/adapters/adapter_http_axum/Cargo.toml
-COPY crates/adapters/adapter_storage_sqlite_sqlx/Cargo.toml /code/crates/adapters/adapter_storage_sqlite_sqlx/Cargo.toml
-COPY crates/adapters/adapter_virtual/Cargo.toml /code/crates/adapters/adapter_virtual/Cargo.toml
-COPY crates/adapters/adapter_mqtt/Cargo.toml /code/crates/adapters/adapter_mqtt/Cargo.toml
-COPY crates/adapters/adapter_ble/Cargo.toml /code/crates/adapters/adapter_ble/Cargo.toml
+COPY crates/adapters/dashboard_leptos /code/crates/adapters/dashboard_leptos
+COPY crates/adapters/http_axum/Cargo.toml /code/crates/adapters/http_axum/Cargo.toml
+COPY crates/adapters/storage_sqlite_sqlx/Cargo.toml /code/crates/adapters/storage_sqlite_sqlx/Cargo.toml
+COPY crates/adapters/virtual/Cargo.toml /code/crates/adapters/virtual/Cargo.toml
+COPY crates/adapters/mqtt/Cargo.toml /code/crates/adapters/mqtt/Cargo.toml
+COPY crates/adapters/ble/Cargo.toml /code/crates/adapters/ble/Cargo.toml
 COPY crates/bin/minihubd/Cargo.toml /code/crates/bin/minihubd/Cargo.toml
 
 RUN set -eux; \
     for crate in domain app; do \
     mkdir -p "crates/${crate}/src" && touch "crates/${crate}/src/lib.rs"; \
     done; \
-    for adapter in adapter_http_axum adapter_storage_sqlite_sqlx adapter_virtual adapter_mqtt adapter_ble; do \
+    for adapter in http_axum storage_sqlite_sqlx virtual mqtt ble; do \
     mkdir -p "crates/adapters/${adapter}/src" && touch "crates/adapters/${adapter}/src/lib.rs"; \
     done; \
     mkdir -p crates/bin/minihubd/src && echo "fn main() {}" > crates/bin/minihubd/src/main.rs
 
 
 # The dashboard has its own Cargo.toml (excluded from workspace).
-WORKDIR /code/crates/adapters/adapter_dashboard_leptos
+WORKDIR /code/crates/adapters/dashboard_leptos
 
 RUN trunk build --release
 
@@ -38,18 +38,18 @@ WORKDIR /code
 COPY Cargo.toml Cargo.lock ./
 COPY crates/domain/Cargo.toml /code/crates/domain/Cargo.toml
 COPY crates/app/Cargo.toml /code/crates/app/Cargo.toml
-COPY crates/adapters/adapter_http_axum/Cargo.toml /code/crates/adapters/adapter_http_axum/Cargo.toml
-COPY crates/adapters/adapter_storage_sqlite_sqlx/Cargo.toml /code/crates/adapters/adapter_storage_sqlite_sqlx/Cargo.toml
-COPY crates/adapters/adapter_virtual/Cargo.toml /code/crates/adapters/adapter_virtual/Cargo.toml
-COPY crates/adapters/adapter_mqtt/Cargo.toml /code/crates/adapters/adapter_mqtt/Cargo.toml
-COPY crates/adapters/adapter_ble/Cargo.toml /code/crates/adapters/adapter_ble/Cargo.toml
+COPY crates/adapters/http_axum/Cargo.toml /code/crates/adapters/http_axum/Cargo.toml
+COPY crates/adapters/storage_sqlite_sqlx/Cargo.toml /code/crates/adapters/storage_sqlite_sqlx/Cargo.toml
+COPY crates/adapters/virtual/Cargo.toml /code/crates/adapters/virtual/Cargo.toml
+COPY crates/adapters/mqtt/Cargo.toml /code/crates/adapters/mqtt/Cargo.toml
+COPY crates/adapters/ble/Cargo.toml /code/crates/adapters/ble/Cargo.toml
 COPY crates/bin/minihubd/Cargo.toml /code/crates/bin/minihubd/Cargo.toml
 
 RUN set -eux; \
     for crate in domain app; do \
     mkdir -p "crates/${crate}/src" && touch "crates/${crate}/src/lib.rs"; \
     done; \
-    for adapter in adapter_http_axum adapter_storage_sqlite_sqlx adapter_virtual adapter_mqtt adapter_ble; do \
+    for adapter in http_axum storage_sqlite_sqlx virtual mqtt ble; do \
     mkdir -p "crates/adapters/${adapter}/src" && touch "crates/adapters/${adapter}/src/lib.rs"; \
     done; \
     mkdir -p crates/bin/minihubd/src && echo "fn main() {}" > crates/bin/minihubd/src/main.rs
@@ -91,7 +91,7 @@ RUN groupadd --gid 1000 minihub \
 WORKDIR /app
 
 COPY --from=builder /code/target/release/minihubd /app/minihubd
-COPY --from=dashboard /code/crates/adapters/adapter_dashboard_leptos/dist /app/dashboard
+COPY --from=dashboard /code/crates/adapters/dashboard_leptos/dist /app/dashboard
 
 RUN mkdir -p /app/data && chown -R minihub:minihub /app
 
