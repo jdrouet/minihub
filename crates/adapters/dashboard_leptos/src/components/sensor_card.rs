@@ -94,9 +94,11 @@ pub fn SensorCard(
                 <div class="sensor-card-body">{body}</div>
                 {battery.map(|level| {
                     let css = battery_class(level);
+                    let icon = battery_icon(level);
                     view! {
                         <div class="sensor-card-footer">
                             <span class=format!("sensor-battery {css}")>
+                                <span class="sensor-battery-icon">{icon}</span>
                                 {format!("{level}%")}
                             </span>
                         </div>
@@ -182,6 +184,14 @@ fn battery_class(level: i64) -> &'static str {
     } else {
         "sensor-battery-low"
     }
+}
+
+/// Return a Unicode battery icon matching the charge level.
+///
+/// Uses the standard battery emoji (U+1F50B) for good/medium levels
+/// and the low-battery emoji (U+1FAAB) for low levels.
+fn battery_icon(level: i64) -> &'static str {
+    if level > 20 { "\u{1F50B}" } else { "\u{1FAAB}" }
 }
 
 /// A classified sensor entity with its kind, ready for rendering.
@@ -395,6 +405,18 @@ mod tests {
     fn should_return_empty_vec_when_entity_list_is_empty() {
         let entries = filter_sensor_entities(Vec::new());
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn should_return_full_battery_icon_when_level_above_20() {
+        assert_eq!(battery_icon(100), "\u{1F50B}");
+        assert_eq!(battery_icon(21), "\u{1F50B}");
+    }
+
+    #[test]
+    fn should_return_low_battery_icon_when_level_at_or_below_20() {
+        assert_eq!(battery_icon(20), "\u{1FAAB}");
+        assert_eq!(battery_icon(0), "\u{1FAAB}");
     }
 
     #[test]
