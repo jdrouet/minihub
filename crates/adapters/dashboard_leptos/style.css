@@ -737,10 +737,17 @@ tbody tr:hover {
 }
 
 .sensor-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 0.75rem;
     padding-top: 0.5rem;
     border-top: 1px solid var(--color-border);
-    text-align: right;
+}
+
+.sensor-card-updated {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
 }
 
 .sensor-battery {

@@ -1,5 +1,6 @@
 //! Sensor card component for displaying BLE sensor entity data at a glance.
 
+use chrono::{DateTime, Utc};
 use leptos::prelude::*;
 use leptos_router::components::A;
 use minihub_domain::entity::{AttributeValue, Entity};
@@ -83,6 +84,7 @@ pub fn SensorCard(
     };
 
     let battery = int_attr(&entity, "battery_level");
+    let last_updated = format_relative_time(entity.last_updated);
 
     view! {
         <A href=href attr:class="sensor-card-link">
@@ -92,18 +94,19 @@ pub fn SensorCard(
                     <span class="sensor-card-kind">{kind_label}</span>
                 </div>
                 <div class="sensor-card-body">{body}</div>
-                {battery.map(|level| {
-                    let css = battery_class(level);
-                    let icon = battery_icon(level);
-                    view! {
-                        <div class="sensor-card-footer">
+                <div class="sensor-card-footer">
+                    <span class="sensor-card-updated">{last_updated}</span>
+                    {battery.map(|level| {
+                        let css = battery_class(level);
+                        let icon = battery_icon(level);
+                        view! {
                             <span class=format!("sensor-battery {css}")>
                                 <span class="sensor-battery-icon">{icon}</span>
                                 {format!("{level}%")}
                             </span>
-                        </div>
-                    }
-                })}
+                        }
+                    })}
+                </div>
             </div>
         </A>
     }
@@ -172,6 +175,30 @@ fn miflora_body(entity: &Entity) -> impl IntoView {
                 </div>
             })}
         </div>
+    }
+}
+
+/// Format a timestamp as a short relative time string (e.g. "2d ago", "10min ago").
+fn format_relative_time(timestamp: DateTime<Utc>) -> String {
+    let delta = Utc::now() - timestamp;
+    let secs = delta.num_seconds();
+
+    if secs < 0 {
+        return "just now".to_owned();
+    }
+
+    let mins = delta.num_minutes();
+    let hours = delta.num_hours();
+    let days = delta.num_days();
+
+    if secs < 60 {
+        format!("{secs}s ago")
+    } else if mins < 60 {
+        format!("{mins}min ago")
+    } else if hours < 24 {
+        format!("{hours}h ago")
+    } else {
+        format!("{days}d ago")
     }
 }
 
@@ -417,6 +444,36 @@ mod tests {
     fn should_return_low_battery_icon_when_level_at_or_below_20() {
         assert_eq!(battery_icon(20), "\u{1FAAB}");
         assert_eq!(battery_icon(0), "\u{1FAAB}");
+    }
+
+    #[test]
+    fn should_format_seconds_ago() {
+        let ts = Utc::now() - chrono::Duration::seconds(30);
+        assert_eq!(format_relative_time(ts), "30s ago");
+    }
+
+    #[test]
+    fn should_format_minutes_ago() {
+        let ts = Utc::now() - chrono::Duration::minutes(10);
+        assert_eq!(format_relative_time(ts), "10min ago");
+    }
+
+    #[test]
+    fn should_format_hours_ago() {
+        let ts = Utc::now() - chrono::Duration::hours(3);
+        assert_eq!(format_relative_time(ts), "3h ago");
+    }
+
+    #[test]
+    fn should_format_days_ago() {
+        let ts = Utc::now() - chrono::Duration::days(2);
+        assert_eq!(format_relative_time(ts), "2d ago");
+    }
+
+    #[test]
+    fn should_format_just_now_when_timestamp_is_in_the_future() {
+        let ts = Utc::now() + chrono::Duration::minutes(5);
+        assert_eq!(format_relative_time(ts), "just now");
     }
 
     #[test]
