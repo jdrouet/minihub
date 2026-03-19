@@ -109,7 +109,7 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
     /// If an entity with the same `entity_id` already exists, its state and
     /// attributes are updated (preserving the original UUID). Otherwise a new
     /// entity is created. Publishes [`EventType::StateChanged`] when the state
-    /// differs.
+    /// differs, or [`EventType::AttributeChanged`] when only attributes differ.
     ///
     /// # Errors
     ///
@@ -120,6 +120,7 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
         if let Some(existing) = self.repo.find_by_entity_id(&entity.entity_id).await? {
             let mut updated = existing;
             let old_state = updated.state.clone();
+            let old_attributes = updated.attributes.clone();
             updated.state.clone_from(&entity.state);
             updated.attributes.clone_from(&entity.attributes);
             updated.mac_address.clone_from(&entity.mac_address);
@@ -136,6 +137,13 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
                         "old_state": old_state,
                         "new_state": entity.state,
                     }),
+                );
+                let _ = self.publisher.publish(event).await;
+            } else if old_attributes != entity.attributes {
+                let event = Event::new(
+                    EventType::AttributeChanged,
+                    Some(saved.id),
+                    serde_json::json!({}),
                 );
                 let _ = self.publisher.publish(event).await;
             }
@@ -507,6 +515,62 @@ mod tests {
             .filter(|evt| evt.event_type == EventType::StateChanged)
             .collect();
         assert_eq!(state_events.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn should_publish_attribute_changed_on_upsert_when_only_attributes_differ() {
+        let svc = make_service();
+        let entity = valid_entity(); // state = Off, no attributes
+        let original_id = entity.id;
+        svc.create_entity(entity).await.unwrap();
+
+        let updated = Entity::builder()
+            .entity_id("light.living_room")
+            .friendly_name("Living Room Light")
+            .state(EntityState::Off) // same state
+            .attribute(
+                "temperature",
+                minihub_domain::entity::AttributeValue::Float(23.1),
+            )
+            .build()
+            .unwrap();
+
+        svc.upsert_entity(updated).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        let attr_events: Vec<_> = events
+            .iter()
+            .filter(|evt| evt.event_type == EventType::AttributeChanged)
+            .collect();
+        assert_eq!(attr_events.len(), 1);
+        assert_eq!(attr_events[0].entity_id, Some(original_id));
+    }
+
+    #[tokio::test]
+    async fn should_not_publish_any_event_on_upsert_when_nothing_changed() {
+        let svc = make_service();
+        let entity = valid_entity(); // state = Off, no attributes
+        svc.create_entity(entity).await.unwrap();
+
+        let updated = Entity::builder()
+            .entity_id("light.living_room")
+            .friendly_name("Living Room Light")
+            .state(EntityState::Off)
+            .build()
+            .unwrap();
+
+        svc.upsert_entity(updated).await.unwrap();
+
+        let events = svc.publisher.events.lock().unwrap();
+        // Only the initial EntityCreated event, no StateChanged or AttributeChanged
+        let change_events: Vec<_> = events
+            .iter()
+            .filter(|evt| {
+                evt.event_type == EventType::StateChanged
+                    || evt.event_type == EventType::AttributeChanged
+            })
+            .collect();
+        assert_eq!(change_events.len(), 0);
     }
 
     #[tokio::test]
