@@ -4,7 +4,7 @@ use minihub_domain::entity::Entity;
 use minihub_domain::event::EventType;
 
 use crate::api;
-use crate::components::{Loading, SensorCardGrid, StatCard};
+use crate::components::{Loading, PlantCardGrid, SensorCardGrid, StatCard};
 use crate::sse::use_sse_events;
 
 /// Dashboard data loaded on the home page.
@@ -103,6 +103,7 @@ pub fn Home() -> impl IntoView {
                             <StatCard label="Devices" value=dc/>
                             <StatCard label="Areas" value=ac/>
                         </div>
+                        <PlantCardGrid entities/>
                         <h2>"Sensors"</h2>
                         <SensorCardGrid entities/>
                     }.into_any()

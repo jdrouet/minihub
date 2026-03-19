@@ -47,7 +47,7 @@ fn float_attr(entity: &Entity, key: &str) -> Option<f64> {
 }
 
 /// Extract an integer attribute value.
-fn int_attr(entity: &Entity, key: &str) -> Option<i64> {
+pub(crate) fn int_attr(entity: &Entity, key: &str) -> Option<i64> {
     match entity.get_attribute(key)? {
         AttributeValue::Int(v) => Some(*v),
         AttributeValue::Float(v) => Some(*v as i64),
@@ -179,7 +179,7 @@ fn miflora_body(entity: &Entity) -> impl IntoView {
 }
 
 /// Format a timestamp as a short relative time string (e.g. "2d ago", "10min ago").
-fn format_relative_time(timestamp: DateTime<Utc>) -> String {
+pub(crate) fn format_relative_time(timestamp: DateTime<Utc>) -> String {
     let delta = Utc::now() - timestamp;
     let secs = delta.num_seconds();
 
