@@ -234,11 +234,20 @@ impl Config {
         }
     }
 
+    #[must_use]
+    fn plant_slug(name: &str) -> String {
+        name.to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '_' })
+            .collect()
+    }
+
     fn validate(&self) -> Result<(), ConfigError> {
         if self.server.port == 0 {
             return Err(ConfigError::Validation("port must be non-zero".to_string()));
         }
         let mut seen_entity_ids = std::collections::HashSet::new();
+        let mut seen_slugs = std::collections::HashSet::new();
         for (idx, plant) in self.plants.iter().enumerate() {
             if plant.name.is_empty() {
                 return Err(ConfigError::Validation(format!(
@@ -254,6 +263,13 @@ impl Config {
                 return Err(ConfigError::Validation(format!(
                     "plants[{idx}]: duplicate entity_id {:?}",
                     plant.entity_id
+                )));
+            }
+            let slug = Self::plant_slug(&plant.name);
+            if !seen_slugs.insert(slug.clone()) {
+                return Err(ConfigError::Validation(format!(
+                    "plants[{idx}]: name {name:?} produces duplicate plant id {slug:?}",
+                    name = plant.name
                 )));
             }
         }
@@ -764,6 +780,23 @@ mod tests {
         });
         let err = config.validate().unwrap_err();
         assert!(err.to_string().contains("entity_id must not be empty"));
+    }
+
+    #[test]
+    fn should_reject_plants_with_colliding_slugs() {
+        let mut config = Config::default();
+        config.plants.push(PlantConfig {
+            name: "My Plant".to_string(),
+            entity_id: "sensor.miflora_abc".to_string(),
+            ..PlantConfig::default()
+        });
+        config.plants.push(PlantConfig {
+            name: "My-Plant".to_string(),
+            entity_id: "sensor.miflora_def".to_string(),
+            ..PlantConfig::default()
+        });
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("duplicate plant id"));
     }
 
     #[test]

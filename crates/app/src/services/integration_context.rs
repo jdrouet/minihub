@@ -81,6 +81,13 @@ where
         }
     }
 
+    async fn find_entity_by_entity_id(
+        &self,
+        entity_id: &str,
+    ) -> Result<Option<Entity>, MiniHubError> {
+        self.entity_service.find_by_entity_id(entity_id).await
+    }
+
     async fn publish(&self, event: Event) -> Result<(), MiniHubError> {
         self.event_publisher.publish(event).await
     }

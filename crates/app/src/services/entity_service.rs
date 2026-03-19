@@ -70,6 +70,15 @@ impl<R: EntityRepository, P: EventPublisher> EntityService<R, P> {
         self.repo.get_all().await
     }
 
+    /// Find an entity by its domain-level `entity_id` string.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage error propagated from the repository.
+    pub async fn find_by_entity_id(&self, entity_id: &str) -> Result<Option<Entity>, MiniHubError> {
+        self.repo.find_by_entity_id(entity_id).await
+    }
+
     /// Update the state of an existing entity.
     ///
     /// Publishes a [`EventType::StateChanged`] event when the state differs.

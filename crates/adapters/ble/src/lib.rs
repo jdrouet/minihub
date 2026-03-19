@@ -343,6 +343,13 @@ mod tests {
             Ok(None)
         }
 
+        async fn find_entity_by_entity_id(
+            &self,
+            _entity_id: &str,
+        ) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
+        }
+
         async fn publish(&self, _event: Event) -> Result<(), MiniHubError> {
             Ok(())
         }
@@ -410,6 +417,13 @@ mod tests {
 
         async fn find_entity_by_id(&self, id: EntityId) -> Result<Option<Entity>, MiniHubError> {
             Ok(self.entities.lock().unwrap().get(&id).cloned())
+        }
+
+        async fn find_entity_by_entity_id(
+            &self,
+            _entity_id: &str,
+        ) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
         }
 
         async fn publish(&self, event: Event) -> Result<(), MiniHubError> {
@@ -674,6 +688,13 @@ mod tests {
         }
 
         async fn find_entity_by_id(&self, _id: EntityId) -> Result<Option<Entity>, MiniHubError> {
+            Ok(None)
+        }
+
+        async fn find_entity_by_entity_id(
+            &self,
+            _entity_id: &str,
+        ) -> Result<Option<Entity>, MiniHubError> {
             Ok(None)
         }
 

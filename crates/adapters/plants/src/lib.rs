@@ -192,13 +192,22 @@ impl Integration for PlantIntegration {
 
     async fn setup(&mut self, ctx: &impl IntegrationContext) -> Result<(), MiniHubError> {
         for config in &self.configs {
-            let plant_entity = config.build_entity(None)?;
+            let sensor = ctx
+                .find_entity_by_entity_id(&config.source_entity_id)
+                .await?;
+            let plant_entity = config.build_entity(sensor.as_ref())?;
             ctx.upsert_entity(plant_entity).await?;
 
+            let hydrated = if sensor.is_some() {
+                "hydrated from sensor"
+            } else {
+                "sensor not yet available"
+            };
             tracing::info!(
                 plant = %config.name,
                 source = %config.source_entity_id,
-                "plant entity created (sensor data will be populated by background task)"
+                hydrated,
+                "plant entity created"
             );
         }
 
