@@ -626,6 +626,138 @@ tbody tr:hover {
     }
 }
 
+/* ── Sensor cards ───────────────────────────────────────────────────── */
+
+.sensor-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.sensor-card-link {
+    text-decoration: none;
+    color: inherit;
+}
+
+.sensor-card-link:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
+.sensor-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px var(--color-shadow);
+    transition:
+        box-shadow var(--transition),
+        transform var(--transition);
+}
+
+.sensor-card:hover {
+    box-shadow: 0 4px 12px var(--color-shadow);
+    transform: translateY(-2px);
+}
+
+.sensor-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 1rem;
+    gap: 0.5rem;
+}
+
+.sensor-card-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.sensor-card-kind {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.sensor-metrics {
+    display: flex;
+    gap: 1.5rem;
+    align-items: baseline;
+}
+
+.sensor-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.sensor-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.sensor-metric-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.15rem;
+}
+
+.sensor-metric-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    line-height: 1.1;
+}
+
+.sensor-metrics-grid .sensor-metric-value {
+    font-size: 1.25rem;
+}
+
+.sensor-metric-unit {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
+}
+
+.sensor-card-footer {
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-border);
+    text-align: right;
+}
+
+.sensor-battery {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+}
+
+.sensor-battery-good {
+    color: var(--color-success);
+}
+
+.sensor-battery-medium {
+    color: var(--color-warning);
+}
+
+.sensor-battery-low {
+    color: var(--color-danger);
+}
+
 /* ── 404 page ────────────────────────────────────────────────────────── */
 
 .not-found {
@@ -693,6 +825,10 @@ tbody tr:hover {
 
 @media (max-width: 480px) {
     .stat-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sensor-card-grid {
         grid-template-columns: 1fr;
     }
 
