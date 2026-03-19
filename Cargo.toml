@@ -8,6 +8,7 @@ members = [
     "crates/adapters/virtual",
     "crates/adapters/mqtt",
     "crates/adapters/ble",
+    "crates/adapters/plants",
     "crates/bin/minihubd",
 ]
 exclude = [
@@ -29,6 +30,7 @@ minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/storage_sqlite_s
 minihub-adapter-virtual = { path = "crates/adapters/virtual", version = "0.1.1" }
 minihub-adapter-mqtt = { path = "crates/adapters/mqtt", version = "0.1.1" }
 minihub-adapter-ble = { path = "crates/adapters/ble", version = "0.1.2" }
+minihub-adapter-plants = { path = "crates/adapters/plants", version = "0.1.0" }
 
 # External dependencies
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }

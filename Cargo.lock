@@ -1242,6 +1242,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "minihub-adapter-plants"
+version = "0.1.0"
+dependencies = [
+ "minihub-app",
+ "minihub-domain",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "minihub-adapter-storage-sqlite-sqlx"
 version = "0.1.1"
 dependencies = [
