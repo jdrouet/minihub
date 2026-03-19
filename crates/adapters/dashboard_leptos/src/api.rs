@@ -55,14 +55,6 @@ fn encode_query_value(value: &str) -> String {
         .replace(' ', "%20")
 }
 
-/// Summary counts for the home page dashboard.
-#[derive(Debug, Clone)]
-pub struct DashboardCounts {
-    pub entities: usize,
-    pub devices: usize,
-    pub areas: usize,
-}
-
 /// Fetch all entities from the API.
 pub async fn fetch_entities() -> Result<Vec<Entity>, ApiError> {
     let resp = check_response(Request::get("/api/entities").send().await?).await?;
@@ -82,19 +74,6 @@ pub async fn fetch_areas() -> Result<Vec<Area>, ApiError> {
     let resp = check_response(Request::get("/api/areas").send().await?).await?;
     let areas: Vec<Area> = resp.json().await?;
     Ok(areas)
-}
-
-/// Fetch entity, device, and area counts for the dashboard.
-pub async fn fetch_dashboard_counts() -> Result<DashboardCounts, ApiError> {
-    let entities = fetch_entities().await?.len();
-    let devices = fetch_devices().await?.len();
-    let areas = fetch_areas().await?.len();
-
-    Ok(DashboardCounts {
-        entities,
-        devices,
-        areas,
-    })
 }
 
 /// Fetch a single device by ID from the API.

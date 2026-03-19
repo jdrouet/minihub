@@ -16,11 +16,11 @@ fn stored_theme() -> String {
 
 /// Apply the theme by setting the `data-theme` attribute on `<html>`.
 fn apply_theme(theme: &str) {
-    if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-        if let Some(el) = doc.document_element() {
-            let html = el.unchecked_into::<web_sys::HtmlElement>();
-            let _ = html.dataset().set("theme", theme);
-        }
+    if let Some(doc) = web_sys::window().and_then(|w| w.document())
+        && let Some(el) = doc.document_element()
+    {
+        let html = el.unchecked_into::<web_sys::HtmlElement>();
+        let _ = html.dataset().set("theme", theme);
     }
 }
 
