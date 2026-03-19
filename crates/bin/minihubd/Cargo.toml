@@ -14,6 +14,7 @@ minihub-adapter-storage-sqlite-sqlx = { workspace = true }
 minihub-adapter-virtual = { workspace = true }
 minihub-adapter-mqtt = { workspace = true }
 minihub-adapter-ble = { workspace = true }
+minihub-adapter-plants = { workspace = true }
 axum = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

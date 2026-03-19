@@ -22,6 +22,7 @@ use std::sync::Arc;
 use minihub_adapter_ble::{BleConfig, BleIntegration};
 use minihub_adapter_http_axum::state::AppState;
 use minihub_adapter_mqtt::{MqttConfig, MqttIntegration};
+use minihub_adapter_plants::PlantIntegration;
 use minihub_adapter_storage_sqlite_sqlx::{
     Config as DbConfig, SqliteAreaRepository, SqliteAutomationRepository, SqliteDeviceRepository,
     SqliteEntityHistoryRepository, SqliteEntityRepository, SqliteEventStore,
@@ -181,6 +182,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         integration.setup(&ctx).await?;
         integration.start_background(ctx.clone()).await?;
         tracing::info!(integration = integration.name(), "BLE integration ready");
+    }
+
+    if !config.plants.is_empty() {
+        let plant_configs: Vec<minihub_adapter_plants::PlantConfig> = config
+            .plants
+            .iter()
+            .map(|pc| minihub_adapter_plants::PlantConfig {
+                name: pc.name.clone(),
+                source_entity_id: pc.entity_id.clone(),
+                moisture_low: pc.moisture_low,
+                moisture_high: pc.moisture_high,
+                temperature_low: pc.temperature_low,
+                temperature_high: pc.temperature_high,
+                conductivity_low: pc.conductivity_low,
+                conductivity_high: pc.conductivity_high,
+            })
+            .collect();
+        let mut integration = PlantIntegration::new(plant_configs);
+        integration.setup(&ctx).await?;
+        integration.start_background(ctx.clone()).await?;
+        tracing::info!(count = config.plants.len(), "plant integration ready");
     }
 
     // Background purge task — removes old entity history records
