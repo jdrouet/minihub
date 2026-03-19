@@ -1,8 +1,11 @@
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use minihub_domain::entity::Entity;
+use minihub_domain::event::EventType;
 
 use crate::api;
 use crate::components::{Loading, SensorCardGrid, StatCard};
+use crate::sse::use_sse_events;
 
 /// Dashboard data loaded on the home page.
 #[derive(Debug, Clone)]
@@ -27,32 +30,73 @@ async fn fetch_dashboard_data() -> Result<DashboardData, crate::api::ApiError> {
     })
 }
 
-/// Home page displaying counts and BLE sensor cards.
+/// Home page displaying counts and BLE sensor cards with live SSE updates.
 #[component]
 pub fn Home() -> impl IntoView {
-    let data = LocalResource::new(fetch_dashboard_data);
+    let (entities, set_entities) = signal(Vec::<Entity>::new());
+    let (counts, set_counts) = signal(None::<(usize, usize, usize)>);
+    let (error, set_error) = signal(None::<String>);
+    let (loading, set_loading) = signal(true);
+
+    Effect::new(move |_| {
+        spawn_local(async move {
+            set_loading.set(true);
+            match fetch_dashboard_data().await {
+                Ok(dd) => {
+                    set_counts.set(Some((dd.entity_count, dd.device_count, dd.area_count)));
+                    set_entities.set(dd.entities);
+                    set_loading.set(false);
+                }
+                Err(err) => {
+                    set_error.set(Some(err.message));
+                    set_loading.set(false);
+                }
+            }
+        });
+    });
+
+    let sse_event = use_sse_events();
+
+    Effect::new(move |_| {
+        let Some(event) = sse_event.get() else {
+            return;
+        };
+
+        if matches!(
+            event.event_type,
+            EventType::StateChanged | EventType::AttributeChanged
+        ) {
+            spawn_local(async move {
+                if let Ok(new_entities) = api::fetch_entities().await {
+                    set_entities.set(new_entities);
+                }
+            });
+        }
+    });
 
     view! {
         <div>
             <h1>"Home"</h1>
-            <Suspense fallback=move || view! { <Loading/> }>
-                {move || {
-                    data.read().as_ref().map(|result| match result {
-                        Ok(dd) => view! {
-                            <div class="stat-grid">
-                                <StatCard label="Entities" value=dd.entity_count/>
-                                <StatCard label="Devices" value=dd.device_count/>
-                                <StatCard label="Areas" value=dd.area_count/>
-                            </div>
-                            <h2>"Sensors"</h2>
-                            <SensorCardGrid entities=dd.entities.clone()/>
-                        }.into_any(),
-                        Err(err) => view! {
-                            <p class="error">{"Failed to load dashboard: "} {err.to_string()}</p>
-                        }.into_any(),
-                    })
-                }}
-            </Suspense>
+            {move || {
+                if loading.get() {
+                    view! { <Loading/> }.into_any()
+                } else if let Some(err_msg) = error.get() {
+                    view! {
+                        <p class="error">{"Failed to load dashboard: "} {err_msg}</p>
+                    }.into_any()
+                } else {
+                    let (ec, dc, ac) = counts.get().unwrap_or_default();
+                    view! {
+                        <div class="stat-grid">
+                            <StatCard label="Entities" value=ec/>
+                            <StatCard label="Devices" value=dc/>
+                            <StatCard label="Areas" value=ac/>
+                        </div>
+                        <h2>"Sensors"</h2>
+                        <SensorCardGrid entities=entities.get()/>
+                    }.into_any()
+                }
+            }}
         </div>
     }
 }
