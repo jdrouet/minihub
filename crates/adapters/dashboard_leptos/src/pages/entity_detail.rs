@@ -1,11 +1,11 @@
+use crate::api::{call_entity_service, fetch_entity, update_entity_state};
+use crate::components::{HistoryChart, Loading, use_toasts};
+use crate::sse::use_sse_events;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_params_map;
 use minihub_domain::entity::{Entity, EntityState};
 use minihub_domain::event::EventType;
-use crate::api::{call_entity_service, fetch_entity, update_entity_state};
-use crate::components::{HistoryChart, Loading, use_toasts};
-use crate::sse::use_sse_events;
 
 /// Returns `true` when the entity's domain-level id starts with `"sensor.miflora_"`.
 fn is_miflora(entity: &Entity) -> bool {
