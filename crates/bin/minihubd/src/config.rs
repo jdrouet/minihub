@@ -20,6 +20,45 @@ pub struct Config {
     pub integrations: IntegrationsConfig,
     /// Entity history retention settings.
     pub history: HistoryConfig,
+    /// Plant definitions linking Mi Flora sensors to named plants.
+    pub plants: Vec<PlantConfig>,
+}
+
+/// A named plant associated with a Mi Flora sensor.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PlantConfig {
+    /// User-facing plant name (e.g. "Monstera").
+    pub name: String,
+    /// Domain-level entity id of the Mi Flora sensor (e.g. `sensor.miflora_c47c8d6a1234`).
+    pub entity_id: String,
+    /// Moisture percentage below which the plant needs water.
+    pub moisture_low: u8,
+    /// Moisture percentage above which the plant is overwatered.
+    pub moisture_high: u8,
+    /// Minimum acceptable temperature in degrees Celsius.
+    pub temperature_low: f64,
+    /// Maximum acceptable temperature in degrees Celsius.
+    pub temperature_high: f64,
+    /// Minimum acceptable conductivity in µS/cm.
+    pub conductivity_low: u16,
+    /// Maximum acceptable conductivity in µS/cm.
+    pub conductivity_high: u16,
+}
+
+impl Default for PlantConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            entity_id: String::new(),
+            moisture_low: 15,
+            moisture_high: 60,
+            temperature_low: 10.0,
+            temperature_high: 35.0,
+            conductivity_low: 350,
+            conductivity_high: 2000,
+        }
+    }
 }
 
 /// HTTP listener configuration.
@@ -198,6 +237,25 @@ impl Config {
     fn validate(&self) -> Result<(), ConfigError> {
         if self.server.port == 0 {
             return Err(ConfigError::Validation("port must be non-zero".to_string()));
+        }
+        let mut seen_entity_ids = std::collections::HashSet::new();
+        for (idx, plant) in self.plants.iter().enumerate() {
+            if plant.name.is_empty() {
+                return Err(ConfigError::Validation(format!(
+                    "plants[{idx}]: name must not be empty"
+                )));
+            }
+            if plant.entity_id.is_empty() {
+                return Err(ConfigError::Validation(format!(
+                    "plants[{idx}]: entity_id must not be empty"
+                )));
+            }
+            if !seen_entity_ids.insert(&plant.entity_id) {
+                return Err(ConfigError::Validation(format!(
+                    "plants[{idx}]: duplicate entity_id {:?}",
+                    plant.entity_id
+                )));
+            }
         }
         Ok(())
     }
@@ -644,6 +702,85 @@ mod tests {
         let path_buf = config.dashboard_dir();
         assert!(path_buf.is_some());
         assert_eq!(path_buf.unwrap(), std::path::PathBuf::from("/test/path"));
+    }
+
+    #[test]
+    fn should_parse_plants_from_toml() {
+        let toml = r#"
+            [[plants]]
+            name = "Monstera"
+            entity_id = "sensor.miflora_c47c8d6a1234"
+
+            [[plants]]
+            name = "Ficus"
+            entity_id = "sensor.miflora_c47c8d6a5678"
+            moisture_low = 20
+            moisture_high = 70
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.plants.len(), 2);
+        assert_eq!(config.plants[0].name, "Monstera");
+        assert_eq!(config.plants[0].entity_id, "sensor.miflora_c47c8d6a1234");
+        assert_eq!(config.plants[0].moisture_low, 15); // default
+        assert_eq!(config.plants[1].name, "Ficus");
+        assert_eq!(config.plants[1].moisture_low, 20); // overridden
+        assert_eq!(config.plants[1].moisture_high, 70);
+    }
+
+    #[test]
+    fn should_default_plants_to_empty_vec() {
+        let config = Config::default();
+        assert!(config.plants.is_empty());
+    }
+
+    #[test]
+    fn should_use_default_thresholds_when_omitted() {
+        let plant = PlantConfig::default();
+        assert_eq!(plant.moisture_low, 15);
+        assert_eq!(plant.moisture_high, 60);
+        assert!((plant.temperature_low - 10.0).abs() < f64::EPSILON);
+        assert!((plant.temperature_high - 35.0).abs() < f64::EPSILON);
+        assert_eq!(plant.conductivity_low, 350);
+        assert_eq!(plant.conductivity_high, 2000);
+    }
+
+    #[test]
+    fn should_reject_plant_with_empty_name() {
+        let mut config = Config::default();
+        config.plants.push(PlantConfig {
+            entity_id: "sensor.miflora_abc".to_string(),
+            ..PlantConfig::default()
+        });
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("name must not be empty"));
+    }
+
+    #[test]
+    fn should_reject_plant_with_empty_entity_id() {
+        let mut config = Config::default();
+        config.plants.push(PlantConfig {
+            name: "Monstera".to_string(),
+            ..PlantConfig::default()
+        });
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("entity_id must not be empty"));
+    }
+
+    #[test]
+    fn should_reject_duplicate_plant_entity_ids() {
+        let mut config = Config::default();
+        config.plants.push(PlantConfig {
+            name: "Monstera".to_string(),
+            entity_id: "sensor.miflora_abc".to_string(),
+            ..PlantConfig::default()
+        });
+        config.plants.push(PlantConfig {
+            name: "Ficus".to_string(),
+            entity_id: "sensor.miflora_abc".to_string(),
+            ..PlantConfig::default()
+        });
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("duplicate entity_id"));
     }
 
     #[test]
