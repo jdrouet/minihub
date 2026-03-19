@@ -43,6 +43,7 @@ pub fn Home() -> impl IntoView {
             set_loading.set(true);
             match fetch_dashboard_data().await {
                 Ok(dd) => {
+                    set_error.set(None);
                     set_counts.set(Some((dd.entity_count, dd.device_count, dd.area_count)));
                     set_entities.set(dd.entities);
                     set_loading.set(false);
@@ -66,6 +67,7 @@ pub fn Home() -> impl IntoView {
             EventType::StateChanged | EventType::AttributeChanged => {
                 spawn_local(async move {
                     if let Ok(new_entities) = api::fetch_entities().await {
+                        set_error.set(None);
                         set_entities.set(new_entities);
                     }
                 });
@@ -73,6 +75,7 @@ pub fn Home() -> impl IntoView {
             EventType::EntityCreated | EventType::EntityRemoved | EventType::DeviceDetected => {
                 spawn_local(async move {
                     if let Ok(dd) = fetch_dashboard_data().await {
+                        set_error.set(None);
                         set_counts.set(Some((dd.entity_count, dd.device_count, dd.area_count)));
                         set_entities.set(dd.entities);
                     }

@@ -116,12 +116,14 @@ fn temp_humidity_body(entity: &Entity) -> impl IntoView {
         <div class="sensor-metrics">
             {temperature.map(|t| view! {
                 <div class="sensor-metric">
+                    <span class="sensor-metric-label">"Temp"</span>
                     <span class="sensor-metric-value">{fmt_f1(t)}</span>
                     <span class="sensor-metric-unit">"°C"</span>
                 </div>
             })}
             {humidity.map(|h| view! {
                 <div class="sensor-metric">
+                    <span class="sensor-metric-label">"Humidity"</span>
                     <span class="sensor-metric-value">{fmt_f1(h)}</span>
                     <span class="sensor-metric-unit">"%"</span>
                 </div>
