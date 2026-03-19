@@ -1,0 +1,349 @@
+//! Sensor card component for displaying BLE sensor entity data at a glance.
+
+use leptos::prelude::*;
+use leptos_router::components::A;
+use minihub_domain::entity::{AttributeValue, Entity};
+
+/// Recognised sensor variant, determined by inspecting the entity's `entity_id`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorKind {
+    /// Xiaomi LYWSD03MMC temperature/humidity sensor.
+    TempHumidity,
+    /// Xiaomi Mi Flora plant sensor.
+    MiFlora,
+}
+
+impl SensorKind {
+    /// Try to classify an entity as a known BLE sensor kind.
+    #[must_use]
+    pub fn detect(entity: &Entity) -> Option<Self> {
+        if entity.entity_id.starts_with("sensor.ble_") {
+            Some(Self::TempHumidity)
+        } else if entity.entity_id.starts_with("sensor.miflora_") {
+            Some(Self::MiFlora)
+        } else {
+            None
+        }
+    }
+
+    /// Human-readable label for the sensor kind.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::TempHumidity => "Temp / Humidity",
+            Self::MiFlora => "Mi Flora",
+        }
+    }
+}
+
+/// Extract a float attribute value, returning `None` when the key is absent.
+fn float_attr(entity: &Entity, key: &str) -> Option<f64> {
+    match entity.get_attribute(key)? {
+        AttributeValue::Float(v) => Some(*v),
+        AttributeValue::Int(v) => Some(*v as f64),
+        _ => None,
+    }
+}
+
+/// Extract an integer attribute value.
+fn int_attr(entity: &Entity, key: &str) -> Option<i64> {
+    match entity.get_attribute(key)? {
+        AttributeValue::Int(v) => Some(*v),
+        AttributeValue::Float(v) => Some(*v as i64),
+        _ => None,
+    }
+}
+
+/// Format a float to one decimal place.
+fn fmt_f1(v: f64) -> String {
+    format!("{v:.1}")
+}
+
+/// A card that shows key metrics for a BLE sensor entity.
+///
+/// Renders differently depending on the [`SensorKind`]:
+/// - **`TempHumidity`**: temperature, humidity, battery level.
+/// - **`MiFlora`**: temperature, moisture, light, conductivity, battery level.
+///
+/// The card links to the entity detail page.
+#[component]
+pub fn SensorCard(
+    /// The sensor entity to display.
+    entity: Entity,
+    /// The detected sensor kind.
+    kind: SensorKind,
+) -> impl IntoView {
+    let href = format!("/entities/{}", entity.id);
+    let name = entity.friendly_name.clone();
+    let kind_label = kind.label();
+
+    let body = match kind {
+        SensorKind::TempHumidity => temp_humidity_body(&entity).into_any(),
+        SensorKind::MiFlora => miflora_body(&entity).into_any(),
+    };
+
+    let battery = int_attr(&entity, "battery_level");
+
+    view! {
+        <A href=href attr:class="sensor-card-link">
+            <div class="sensor-card">
+                <div class="sensor-card-header">
+                    <span class="sensor-card-name">{name}</span>
+                    <span class="sensor-card-kind">{kind_label}</span>
+                </div>
+                <div class="sensor-card-body">{body}</div>
+                {battery.map(|level| {
+                    let css = battery_class(level);
+                    view! {
+                        <div class="sensor-card-footer">
+                            <span class=format!("sensor-battery {css}")>
+                                {format!("{level}%")}
+                            </span>
+                        </div>
+                    }
+                })}
+            </div>
+        </A>
+    }
+}
+
+/// Build the body view for a Temp/Humidity sensor.
+fn temp_humidity_body(entity: &Entity) -> impl IntoView {
+    let temperature = float_attr(entity, "temperature");
+    let humidity = float_attr(entity, "humidity");
+
+    view! {
+        <div class="sensor-metrics">
+            {temperature.map(|t| view! {
+                <div class="sensor-metric">
+                    <span class="sensor-metric-value">{fmt_f1(t)}</span>
+                    <span class="sensor-metric-unit">"°C"</span>
+                </div>
+            })}
+            {humidity.map(|h| view! {
+                <div class="sensor-metric">
+                    <span class="sensor-metric-value">{fmt_f1(h)}</span>
+                    <span class="sensor-metric-unit">"%"</span>
+                </div>
+            })}
+        </div>
+    }
+}
+
+/// Build the body view for a Mi Flora plant sensor.
+fn miflora_body(entity: &Entity) -> impl IntoView {
+    let temperature = float_attr(entity, "temperature");
+    let moisture = int_attr(entity, "moisture");
+    let light = int_attr(entity, "light");
+    let conductivity = int_attr(entity, "conductivity");
+
+    view! {
+        <div class="sensor-metrics sensor-metrics-grid">
+            {temperature.map(|t| view! {
+                <div class="sensor-metric">
+                    <span class="sensor-metric-label">"Temp"</span>
+                    <span class="sensor-metric-value">{fmt_f1(t)}</span>
+                    <span class="sensor-metric-unit">"°C"</span>
+                </div>
+            })}
+            {moisture.map(|m| view! {
+                <div class="sensor-metric">
+                    <span class="sensor-metric-label">"Moisture"</span>
+                    <span class="sensor-metric-value">{m.to_string()}</span>
+                    <span class="sensor-metric-unit">"%"</span>
+                </div>
+            })}
+            {light.map(|l| view! {
+                <div class="sensor-metric">
+                    <span class="sensor-metric-label">"Light"</span>
+                    <span class="sensor-metric-value">{l.to_string()}</span>
+                    <span class="sensor-metric-unit">"lux"</span>
+                </div>
+            })}
+            {conductivity.map(|c| view! {
+                <div class="sensor-metric">
+                    <span class="sensor-metric-label">"Conductivity"</span>
+                    <span class="sensor-metric-value">{c.to_string()}</span>
+                    <span class="sensor-metric-unit">"µS/cm"</span>
+                </div>
+            })}
+        </div>
+    }
+}
+
+/// Return a CSS class for the battery level indicator.
+fn battery_class(level: i64) -> &'static str {
+    if level > 60 {
+        "sensor-battery-good"
+    } else if level > 20 {
+        "sensor-battery-medium"
+    } else {
+        "sensor-battery-low"
+    }
+}
+
+/// A grid of sensor cards populated from a list of entities.
+///
+/// Only entities that match a known [`SensorKind`] are rendered.
+/// Unrecognised entities are silently skipped.
+#[component]
+pub fn SensorCardGrid(
+    /// The entities to filter and display as cards.
+    entities: Vec<Entity>,
+) -> impl IntoView {
+    let cards: Vec<_> = entities
+        .into_iter()
+        .filter_map(|entity| {
+            let kind = SensorKind::detect(&entity)?;
+            Some(view! { <SensorCard entity kind/> })
+        })
+        .collect();
+
+    if cards.is_empty() {
+        view! { <p class="hint">"No BLE sensors found."</p> }.into_any()
+    } else {
+        view! {
+            <div class="sensor-card-grid">{cards}</div>
+        }
+        .into_any()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use minihub_domain::entity::{Entity, EntityState};
+
+    fn ble_temp_entity() -> Entity {
+        Entity::builder()
+            .entity_id("sensor.ble_a4c1385b0edf")
+            .friendly_name("BLE Temp/Humidity A4:C1:38:5B:0E:DF")
+            .state(EntityState::On)
+            .attribute("temperature", AttributeValue::Float(23.1))
+            .attribute("humidity", AttributeValue::Float(45.0))
+            .attribute("battery_level", AttributeValue::Int(87))
+            .attribute("battery_voltage", AttributeValue::Float(3.05))
+            .build()
+            .unwrap()
+    }
+
+    fn miflora_entity() -> Entity {
+        Entity::builder()
+            .entity_id("sensor.miflora_c47c8d6a1234")
+            .friendly_name("Mi Flora C4:7C:8D:6A:12:34")
+            .state(EntityState::On)
+            .attribute("temperature", AttributeValue::Float(20.1))
+            .attribute("light", AttributeValue::Int(82_386))
+            .attribute("moisture", AttributeValue::Int(56))
+            .attribute("conductivity", AttributeValue::Int(1561))
+            .attribute("battery_level", AttributeValue::Int(99))
+            .attribute("firmware", AttributeValue::String("3.1.8".to_owned()))
+            .build()
+            .unwrap()
+    }
+
+    fn light_entity() -> Entity {
+        Entity::builder()
+            .entity_id("light.living_room")
+            .friendly_name("Living Room Light")
+            .state(EntityState::On)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn should_detect_temp_humidity_when_entity_id_starts_with_sensor_ble() {
+        let entity = ble_temp_entity();
+        assert_eq!(SensorKind::detect(&entity), Some(SensorKind::TempHumidity));
+    }
+
+    #[test]
+    fn should_detect_miflora_when_entity_id_starts_with_sensor_miflora() {
+        let entity = miflora_entity();
+        assert_eq!(SensorKind::detect(&entity), Some(SensorKind::MiFlora));
+    }
+
+    #[test]
+    fn should_return_none_when_entity_is_not_a_sensor() {
+        let entity = light_entity();
+        assert_eq!(SensorKind::detect(&entity), None);
+    }
+
+    #[test]
+    fn should_extract_float_attribute_when_present() {
+        let entity = ble_temp_entity();
+        assert_eq!(float_attr(&entity, "temperature"), Some(23.1));
+    }
+
+    #[test]
+    fn should_extract_float_from_int_attribute() {
+        let entity = miflora_entity();
+        assert_eq!(float_attr(&entity, "moisture"), Some(56.0));
+    }
+
+    #[test]
+    fn should_return_none_when_float_attribute_missing() {
+        let entity = light_entity();
+        assert_eq!(float_attr(&entity, "temperature"), None);
+    }
+
+    #[test]
+    fn should_extract_int_attribute_when_present() {
+        let entity = miflora_entity();
+        assert_eq!(int_attr(&entity, "battery_level"), Some(99));
+    }
+
+    #[test]
+    fn should_extract_int_from_float_attribute() {
+        let entity = ble_temp_entity();
+        assert_eq!(int_attr(&entity, "temperature"), Some(23));
+    }
+
+    #[test]
+    fn should_return_none_when_int_attribute_missing() {
+        let entity = light_entity();
+        assert_eq!(int_attr(&entity, "battery_level"), None);
+    }
+
+    #[test]
+    fn should_return_none_when_attribute_is_string() {
+        let entity = miflora_entity();
+        assert_eq!(float_attr(&entity, "firmware"), None);
+        assert_eq!(int_attr(&entity, "firmware"), None);
+    }
+
+    #[test]
+    fn should_return_good_class_when_battery_above_60() {
+        assert_eq!(battery_class(100), "sensor-battery-good");
+        assert_eq!(battery_class(61), "sensor-battery-good");
+    }
+
+    #[test]
+    fn should_return_medium_class_when_battery_between_21_and_60() {
+        assert_eq!(battery_class(60), "sensor-battery-medium");
+        assert_eq!(battery_class(21), "sensor-battery-medium");
+    }
+
+    #[test]
+    fn should_return_low_class_when_battery_at_or_below_20() {
+        assert_eq!(battery_class(20), "sensor-battery-low");
+        assert_eq!(battery_class(0), "sensor-battery-low");
+    }
+
+    #[test]
+    fn should_format_float_to_one_decimal() {
+        assert_eq!(fmt_f1(23.1), "23.1");
+        assert_eq!(fmt_f1(20.16), "20.2");
+        assert_eq!(fmt_f1(-3.0), "-3.0");
+    }
+
+    #[test]
+    fn should_return_correct_label_for_temp_humidity() {
+        assert_eq!(SensorKind::TempHumidity.label(), "Temp / Humidity");
+    }
+
+    #[test]
+    fn should_return_correct_label_for_miflora() {
+        assert_eq!(SensorKind::MiFlora.label(), "Mi Flora");
+    }
+}
