@@ -44,6 +44,12 @@ pub trait IntegrationContext: Send + Sync {
         id: EntityId,
     ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send;
 
+    /// Look up an entity by its domain-level `entity_id` string (e.g. `"sensor.miflora_abc"`).
+    fn find_entity_by_entity_id(
+        &self,
+        entity_id: &str,
+    ) -> impl Future<Output = Result<Option<Entity>, MiniHubError>> + Send;
+
     /// Subscribe to domain events on the event bus.
     ///
     /// Returns a concrete [`broadcast::Receiver`] — there is only one
