@@ -62,15 +62,23 @@ pub fn Home() -> impl IntoView {
             return;
         };
 
-        if matches!(
-            event.event_type,
-            EventType::StateChanged | EventType::AttributeChanged
-        ) {
-            spawn_local(async move {
-                if let Ok(new_entities) = api::fetch_entities().await {
-                    set_entities.set(new_entities);
-                }
-            });
+        match event.event_type {
+            EventType::StateChanged | EventType::AttributeChanged => {
+                spawn_local(async move {
+                    if let Ok(new_entities) = api::fetch_entities().await {
+                        set_entities.set(new_entities);
+                    }
+                });
+            }
+            EventType::EntityCreated | EventType::EntityRemoved | EventType::DeviceDetected => {
+                spawn_local(async move {
+                    if let Ok(dd) = fetch_dashboard_data().await {
+                        set_counts.set(Some((dd.entity_count, dd.device_count, dd.area_count)));
+                        set_entities.set(dd.entities);
+                    }
+                });
+            }
+            _ => {}
         }
     });
 
@@ -93,7 +101,7 @@ pub fn Home() -> impl IntoView {
                             <StatCard label="Areas" value=ac/>
                         </div>
                         <h2>"Sensors"</h2>
-                        <SensorCardGrid entities=entities.get()/>
+                        <SensorCardGrid entities/>
                     }.into_any()
                 }
             }}

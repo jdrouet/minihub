@@ -182,30 +182,54 @@ fn battery_class(level: i64) -> &'static str {
     }
 }
 
-/// A grid of sensor cards populated from a list of entities.
-///
-/// Only entities that match a known [`SensorKind`] are rendered.
-/// Unrecognised entities are silently skipped.
-#[component]
-pub fn SensorCardGrid(
-    /// The entities to filter and display as cards.
-    entities: Vec<Entity>,
-) -> impl IntoView {
-    let cards: Vec<_> = entities
+/// A classified sensor entity with its kind, ready for rendering.
+#[derive(Debug, Clone)]
+pub struct SensorEntry {
+    /// The entity to display.
+    pub entity: Entity,
+    /// The detected sensor kind.
+    pub kind: SensorKind,
+}
+
+/// Filter entities to only those matching a known sensor kind.
+#[must_use]
+pub fn filter_sensor_entities(entities: Vec<Entity>) -> Vec<SensorEntry> {
+    entities
         .into_iter()
         .filter_map(|entity| {
             let kind = SensorKind::detect(&entity)?;
-            Some(view! { <SensorCard entity kind/> })
+            Some(SensorEntry { entity, kind })
         })
-        .collect();
+        .collect()
+}
 
-    if cards.is_empty() {
-        view! { <p class="hint">"No BLE sensors found."</p> }.into_any()
-    } else {
-        view! {
-            <div class="sensor-card-grid">{cards}</div>
-        }
-        .into_any()
+/// A grid of sensor cards populated from a signal of entities.
+///
+/// Only entities that match a known [`SensorKind`] are rendered.
+/// Unrecognised entities are silently skipped. Uses keyed `<For>`
+/// for efficient DOM updates on SSE-driven refreshes.
+#[component]
+pub fn SensorCardGrid(
+    /// Reactive signal providing the entity list.
+    entities: ReadSignal<Vec<Entity>>,
+) -> impl IntoView {
+    let sensor_entries = move || filter_sensor_entities(entities.get());
+
+    view! {
+        <Show
+            when=move || !sensor_entries().is_empty()
+            fallback=|| view! { <p class="hint">"No BLE sensors found."</p> }
+        >
+            <div class="sensor-card-grid">
+                <For
+                    each=sensor_entries
+                    key=|entry| entry.entity.id
+                    let(entry)
+                >
+                    <SensorCard entity=entry.entity kind=entry.kind/>
+                </For>
+            </div>
+        </Show>
     }
 }
 
@@ -345,5 +369,40 @@ mod tests {
     #[test]
     fn should_return_correct_label_for_miflora() {
         assert_eq!(SensorKind::MiFlora.label(), "Mi Flora");
+    }
+
+    #[test]
+    fn should_filter_only_sensor_entities_when_mixed_list_provided() {
+        let entities = vec![ble_temp_entity(), light_entity(), miflora_entity()];
+        let entries = filter_sensor_entities(entities);
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].kind, SensorKind::TempHumidity);
+        assert_eq!(entries[1].kind, SensorKind::MiFlora);
+    }
+
+    #[test]
+    fn should_return_empty_vec_when_no_sensors_in_list() {
+        let entities = vec![light_entity()];
+        let entries = filter_sensor_entities(entities);
+
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn should_return_empty_vec_when_entity_list_is_empty() {
+        let entries = filter_sensor_entities(Vec::new());
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn should_preserve_entity_data_in_sensor_entry() {
+        let entity = ble_temp_entity();
+        let entity_id = entity.entity_id.clone();
+        let entries = filter_sensor_entities(vec![entity]);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].entity.entity_id, entity_id);
+        assert_eq!(entries[0].kind, SensorKind::TempHumidity);
     }
 }
