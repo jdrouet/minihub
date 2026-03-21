@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/jdrouet/minihub/compare/minihub-adapter-http-axum-v0.1.1...minihub-adapter-http-axum-v0.1.2) - 2026-03-21
+
+### Other
+
+- fix publishing
+
 ## [0.1.1](https://github.com/jdrouet/minihub/releases/tag/minihub-adapter-http-axum-v0.1.1) - 2026-03-03
 
 ### Added

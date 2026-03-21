@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jdrouet/minihub/compare/minihub-app-v0.1.1...minihub-app-v0.2.0) - 2026-03-21
+
+### Fixed
+
+- address review feedback on plant integration
+- emit AttributeChanged when entity attributes change on upsert
+
+### Other
+
+- fix publishing
+
 ## [0.1.1](https://github.com/jdrouet/minihub/releases/tag/minihub-app-v0.1.1) - 2026-03-03
 
 ### Added

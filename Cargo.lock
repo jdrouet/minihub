@@ -1194,7 +1194,7 @@ dependencies = [
 
 [[package]]
 name = "minihub-adapter-ble"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "btleplug",
  "minihub-app",
@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "minihub-adapter-http-axum"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "axum",
  "chrono",
@@ -1228,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "minihub-adapter-mqtt"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "minihub-app",
  "minihub-domain",
@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "minihub-adapter-storage-sqlite-sqlx"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "minihub-app",
@@ -1270,7 +1270,7 @@ dependencies = [
 
 [[package]]
 name = "minihub-adapter-virtual"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "minihub-app",
  "minihub-domain",
@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "minihub-app"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "minihub-domain",
@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "minihub-domain"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "minihubd"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "axum",
  "http-body-util",
