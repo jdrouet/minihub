@@ -23,13 +23,13 @@ repository = "https://github.com/jdrouet/minihub"
 
 [workspace.dependencies]
 # Domain & application crates (internal)
-minihub-domain = { path = "crates/domain", version = "0.1.1" }
-minihub-app = { path = "crates/app", version = "0.1.1" }
-minihub-adapter-http-axum = { path = "crates/adapters/http_axum", version = "0.1.1" }
-minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/storage_sqlite_sqlx", version = "0.1.1" }
-minihub-adapter-virtual = { path = "crates/adapters/virtual", version = "0.1.1" }
-minihub-adapter-mqtt = { path = "crates/adapters/mqtt", version = "0.1.1" }
-minihub-adapter-ble = { path = "crates/adapters/ble", version = "0.1.2" }
+minihub-domain = { path = "crates/domain", version = "0.1.2" }
+minihub-app = { path = "crates/app", version = "0.2.0" }
+minihub-adapter-http-axum = { path = "crates/adapters/http_axum", version = "0.1.2" }
+minihub-adapter-storage-sqlite-sqlx = { path = "crates/adapters/storage_sqlite_sqlx", version = "0.1.2" }
+minihub-adapter-virtual = { path = "crates/adapters/virtual", version = "0.1.2" }
+minihub-adapter-mqtt = { path = "crates/adapters/mqtt", version = "0.1.2" }
+minihub-adapter-ble = { path = "crates/adapters/ble", version = "0.1.3" }
 minihub-adapter-plants = { path = "crates/adapters/plants", version = "0.1.0" }
 
 # External dependencies
