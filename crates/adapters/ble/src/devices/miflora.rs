@@ -188,13 +188,23 @@ impl BleDeviceHandler for MifloraHandler {
 
 /// Extract the 6-byte MAC address from a `MiBeacon` `0xFE95` service data payload.
 ///
-/// The `MiBeacon` protocol stores the MAC at bytes 7–12 in reverse order.
+/// The `MiBeacon` v2 frame layout (after `btleplug` strips the UUID) is:
+///
+/// | Offset | Length | Field |
+/// |--------|--------|-------|
+/// | 0 | 2 | Frame Control (LE, bit 4 = MAC included) |
+/// | 2 | 2 | Product ID (LE) |
+/// | 4 | 1 | Frame Counter |
+/// | 5 | 6 | MAC Address (reversed byte order, optional) |
+/// | 11 | … | Capability / Object data (optional) |
+///
 /// On macOS, `peripheral.address()` returns a zeroed address, so this
 /// function provides a reliable cross-platform alternative.
 ///
 /// # Errors
 ///
-/// Returns [`BleError::PayloadParse`] when the payload is shorter than 13 bytes.
+/// Returns [`BleError::PayloadParse`] when the payload is shorter than 11
+/// bytes or the Frame Control MAC-included flag (bit 4) is not set.
 pub(crate) fn parse_mibeacon_mac(data: &[u8]) -> Result<[u8; 6], BleError> {
     if data.len() < MIBEACON_MIN_LEN {
         return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
@@ -589,6 +599,52 @@ mod tests {
         data[10] = 0xA4;
         let mac = parse_mibeacon_mac(&data).unwrap();
         assert_eq!(mac, [0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF]);
+    }
+
+    /// Real-world payload captured from a Xiaomi HHCCJCY01 (Mi Flora) device.
+    ///
+    /// Source: Home Assistant `xiaomi-ble` test suite (`test_Xiaomi_HHCCJCY01`).
+    /// <https://github.com/Bluetooth-Devices/xiaomi-ble/blob/main/tests/test_parser.py>
+    #[test]
+    fn should_parse_mac_from_real_miflora_temperature_advertisement() {
+        // Device MAC: C4:7C:8D:6B:4F:F3
+        // Frame Control 0x2071 (MAC included), Product ID 0x0098, Counter 0x12
+        // Object: temperature 19.6 °C (type 0x1004, value 0x00C4 = 196)
+        #[rustfmt::skip]
+        let data: [u8; 17] = [
+            0x71, 0x20,                         // Frame Control
+            0x98, 0x00,                         // Product ID (HHCCJCY01)
+            0x12,                               // Frame Counter
+            0xF3, 0x4F, 0x6B, 0x8D, 0x7C, 0xC4, // MAC (reversed)
+            0x0D,                               // Capability
+            0x04, 0x10,                         // Object type: temperature
+            0x02,                               // Object length
+            0xC4, 0x00,                         // Temperature: 196 → 19.6 °C
+        ];
+
+        let mac = parse_mibeacon_mac(&data).unwrap();
+        assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6B, 0x4F, 0xF3]);
+    }
+
+    /// Second real-world payload from the same test suite, different device.
+    #[test]
+    fn should_parse_mac_from_real_miflora_conductivity_advertisement() {
+        // Device MAC: C4:7C:8D:6A:3E:7A
+        // Object: conductivity 599 µS/cm (type 0x1009, value 0x0257 = 599)
+        #[rustfmt::skip]
+        let data: [u8; 17] = [
+            0x71, 0x20,                         // Frame Control
+            0x98, 0x00,                         // Product ID (HHCCJCY01)
+            0x68,                               // Frame Counter
+            0x7A, 0x3E, 0x6A, 0x8D, 0x7C, 0xC4, // MAC (reversed)
+            0x0D,                               // Capability
+            0x09, 0x10,                         // Object type: conductivity
+            0x02,                               // Object length
+            0x57, 0x02,                         // Conductivity: 599 µS/cm
+        ];
+
+        let mac = parse_mibeacon_mac(&data).unwrap();
+        assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6A, 0x3E, 0x7A]);
     }
 
     #[test]
