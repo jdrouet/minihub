@@ -41,8 +41,9 @@ const MIFLORA_LOCAL_NAME: &str = "Flower care";
 
 // Payload constants
 
-const MIBEACON_MIN_LEN: usize = 13;
-const MIBEACON_MAC_OFFSET: usize = 7;
+const MIBEACON_MAC_OFFSET: usize = 5;
+const MIBEACON_MIN_LEN: usize = MIBEACON_MAC_OFFSET + 6;
+const MIBEACON_FC_MAC_INCLUDED: u16 = 0x0010;
 const DATA_LEN: usize = 16;
 const FIRMWARE_LEN: usize = 7;
 
@@ -200,6 +201,14 @@ pub(crate) fn parse_mibeacon_mac(data: &[u8]) -> Result<[u8; 6], BleError> {
             format: "MiBeacon",
             expected: MIBEACON_MIN_LEN,
             actual: data.len(),
+        }));
+    }
+
+    let frame_control = u16::from_le_bytes([data[0], data[1]]);
+    if frame_control & MIBEACON_FC_MAC_INCLUDED == 0 {
+        return Err(BleError::PayloadParse(PayloadParseError::MissingField {
+            format: "MiBeacon",
+            field: "MAC address",
         }));
     }
 
@@ -557,8 +566,10 @@ mod tests {
 
     #[test]
     fn should_parse_mibeacon_mac_from_service_data() {
-        let data: [u8; 13] = [
-            0x71, 0x20, 0x98, 0x00, 0x03, 0x00, 0x00, 0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4,
+        // Frame Control 0x2071 (bit 4 set = MAC included), Product ID 0x0098, Counter 0x03
+        // MAC reversed at offset 5: [0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4]
+        let data: [u8; 11] = [
+            0x71, 0x20, 0x98, 0x00, 0x03, 0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4,
         ];
         let mac = parse_mibeacon_mac(&data).unwrap();
         assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6A, 0x12, 0x34]);
@@ -566,23 +577,39 @@ mod tests {
 
     #[test]
     fn should_parse_mibeacon_mac_from_longer_payload() {
+        // Longer payload with object data after the MAC
         let mut data = [0u8; 20];
-        data[7] = 0xDF;
-        data[8] = 0x0E;
-        data[9] = 0x5B;
-        data[10] = 0x38;
-        data[11] = 0xC1;
-        data[12] = 0xA4;
+        data[0] = 0x71; // Frame Control lo (bit 4 set)
+        data[1] = 0x20; // Frame Control hi
+        data[5] = 0xDF;
+        data[6] = 0x0E;
+        data[7] = 0x5B;
+        data[8] = 0x38;
+        data[9] = 0xC1;
+        data[10] = 0xA4;
         let mac = parse_mibeacon_mac(&data).unwrap();
         assert_eq!(mac, [0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF]);
     }
 
     #[test]
     fn should_reject_mibeacon_too_short() {
-        let data = [0u8; 10];
+        let mut data = [0u8; 10];
+        data[0] = 0x71;
+        data[1] = 0x20;
         let err = parse_mibeacon_mac(&data).unwrap_err();
         let source = std::error::Error::source(&err).unwrap();
-        assert!(source.to_string().contains("13 bytes"));
+        assert!(source.to_string().contains("11 bytes"));
+    }
+
+    #[test]
+    fn should_reject_mibeacon_without_mac_flag() {
+        // Frame Control 0x2061 — bit 4 clear (no MAC included)
+        let data: [u8; 11] = [
+            0x61, 0x20, 0x98, 0x00, 0x03, 0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4,
+        ];
+        let err = parse_mibeacon_mac(&data).unwrap_err();
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.to_string().contains("MAC address"));
     }
 
     // build_discovered

@@ -61,6 +61,16 @@ pub enum PayloadParseError {
         /// Actual byte count.
         actual: usize,
     },
+
+    /// A required field is missing from the payload (e.g. optional MAC not
+    /// included per frame control flags).
+    #[error("{format} payload missing required {field}")]
+    MissingField {
+        /// Format name (e.g. `MiBeacon`).
+        format: &'static str,
+        /// The name of the missing field.
+        field: &'static str,
+    },
 }
 
 impl BleError {
@@ -171,6 +181,18 @@ mod tests {
     fn should_convert_gatt_timeout_to_storage_error() {
         let err: MiniHubError = BleError::GattTimeout.into();
         assert!(matches!(err, MiniHubError::Storage(_)));
+    }
+
+    #[test]
+    fn should_display_missing_field_parse_error() {
+        let err = PayloadParseError::MissingField {
+            format: "MiBeacon",
+            field: "MAC address",
+        };
+        assert_eq!(
+            err.to_string(),
+            "MiBeacon payload missing required MAC address"
+        );
     }
 
     #[test]
