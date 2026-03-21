@@ -41,8 +41,9 @@ const MIFLORA_LOCAL_NAME: &str = "Flower care";
 
 // Payload constants
 
-const MIBEACON_MIN_LEN: usize = 13;
-const MIBEACON_MAC_OFFSET: usize = 7;
+const MIBEACON_MAC_OFFSET: usize = 5;
+const MIBEACON_MIN_LEN: usize = MIBEACON_MAC_OFFSET + 6;
+const MIBEACON_FC_MAC_INCLUDED: u16 = 0x0010;
 const DATA_LEN: usize = 16;
 const FIRMWARE_LEN: usize = 7;
 
@@ -187,19 +188,37 @@ impl BleDeviceHandler for MifloraHandler {
 
 /// Extract the 6-byte MAC address from a `MiBeacon` `0xFE95` service data payload.
 ///
-/// The `MiBeacon` protocol stores the MAC at bytes 7–12 in reverse order.
+/// The `MiBeacon` v2 frame layout (after `btleplug` strips the UUID) is:
+///
+/// | Offset | Length | Field |
+/// |--------|--------|-------|
+/// | 0 | 2 | Frame Control (LE, bit 4 = MAC included) |
+/// | 2 | 2 | Product ID (LE) |
+/// | 4 | 1 | Frame Counter |
+/// | 5 | 6 | MAC Address (reversed byte order, optional) |
+/// | 11 | … | Capability / Object data (optional) |
+///
 /// On macOS, `peripheral.address()` returns a zeroed address, so this
 /// function provides a reliable cross-platform alternative.
 ///
 /// # Errors
 ///
-/// Returns [`BleError::PayloadParse`] when the payload is shorter than 13 bytes.
+/// Returns [`BleError::PayloadParse`] when the payload is shorter than 11
+/// bytes or the Frame Control MAC-included flag (bit 4) is not set.
 pub(crate) fn parse_mibeacon_mac(data: &[u8]) -> Result<[u8; 6], BleError> {
     if data.len() < MIBEACON_MIN_LEN {
         return Err(BleError::PayloadParse(PayloadParseError::WrongLength {
             format: "MiBeacon",
             expected: MIBEACON_MIN_LEN,
             actual: data.len(),
+        }));
+    }
+
+    let frame_control = u16::from_le_bytes([data[0], data[1]]);
+    if frame_control & MIBEACON_FC_MAC_INCLUDED == 0 {
+        return Err(BleError::PayloadParse(PayloadParseError::MissingField {
+            format: "MiBeacon",
+            field: "MAC address",
         }));
     }
 
@@ -557,8 +576,10 @@ mod tests {
 
     #[test]
     fn should_parse_mibeacon_mac_from_service_data() {
-        let data: [u8; 13] = [
-            0x71, 0x20, 0x98, 0x00, 0x03, 0x00, 0x00, 0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4,
+        // Frame Control 0x2071 (bit 4 set = MAC included), Product ID 0x0098, Counter 0x03
+        // MAC reversed at offset 5: [0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4]
+        let data: [u8; 11] = [
+            0x71, 0x20, 0x98, 0x00, 0x03, 0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4,
         ];
         let mac = parse_mibeacon_mac(&data).unwrap();
         assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6A, 0x12, 0x34]);
@@ -566,23 +587,85 @@ mod tests {
 
     #[test]
     fn should_parse_mibeacon_mac_from_longer_payload() {
+        // Longer payload with object data after the MAC
         let mut data = [0u8; 20];
-        data[7] = 0xDF;
-        data[8] = 0x0E;
-        data[9] = 0x5B;
-        data[10] = 0x38;
-        data[11] = 0xC1;
-        data[12] = 0xA4;
+        data[0] = 0x71; // Frame Control lo (bit 4 set)
+        data[1] = 0x20; // Frame Control hi
+        data[5] = 0xDF;
+        data[6] = 0x0E;
+        data[7] = 0x5B;
+        data[8] = 0x38;
+        data[9] = 0xC1;
+        data[10] = 0xA4;
         let mac = parse_mibeacon_mac(&data).unwrap();
         assert_eq!(mac, [0xA4, 0xC1, 0x38, 0x5B, 0x0E, 0xDF]);
     }
 
+    /// Real-world payload captured from a Xiaomi HHCCJCY01 (Mi Flora) device.
+    ///
+    /// Source: Home Assistant `xiaomi-ble` test suite (`test_Xiaomi_HHCCJCY01`).
+    /// <https://github.com/Bluetooth-Devices/xiaomi-ble/blob/main/tests/test_parser.py>
+    #[test]
+    fn should_parse_mac_from_real_miflora_temperature_advertisement() {
+        // Device MAC: C4:7C:8D:6B:4F:F3
+        // Frame Control 0x2071 (MAC included), Product ID 0x0098, Counter 0x12
+        // Object: temperature 19.6 °C (type 0x1004, value 0x00C4 = 196)
+        #[rustfmt::skip]
+        let data: [u8; 17] = [
+            0x71, 0x20,                         // Frame Control
+            0x98, 0x00,                         // Product ID (HHCCJCY01)
+            0x12,                               // Frame Counter
+            0xF3, 0x4F, 0x6B, 0x8D, 0x7C, 0xC4, // MAC (reversed)
+            0x0D,                               // Capability
+            0x04, 0x10,                         // Object type: temperature
+            0x02,                               // Object length
+            0xC4, 0x00,                         // Temperature: 196 → 19.6 °C
+        ];
+
+        let mac = parse_mibeacon_mac(&data).unwrap();
+        assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6B, 0x4F, 0xF3]);
+    }
+
+    /// Second real-world payload from the same test suite, different device.
+    #[test]
+    fn should_parse_mac_from_real_miflora_conductivity_advertisement() {
+        // Device MAC: C4:7C:8D:6A:3E:7A
+        // Object: conductivity 599 µS/cm (type 0x1009, value 0x0257 = 599)
+        #[rustfmt::skip]
+        let data: [u8; 17] = [
+            0x71, 0x20,                         // Frame Control
+            0x98, 0x00,                         // Product ID (HHCCJCY01)
+            0x68,                               // Frame Counter
+            0x7A, 0x3E, 0x6A, 0x8D, 0x7C, 0xC4, // MAC (reversed)
+            0x0D,                               // Capability
+            0x09, 0x10,                         // Object type: conductivity
+            0x02,                               // Object length
+            0x57, 0x02,                         // Conductivity: 599 µS/cm
+        ];
+
+        let mac = parse_mibeacon_mac(&data).unwrap();
+        assert_eq!(mac, [0xC4, 0x7C, 0x8D, 0x6A, 0x3E, 0x7A]);
+    }
+
     #[test]
     fn should_reject_mibeacon_too_short() {
-        let data = [0u8; 10];
+        let mut data = [0u8; 10];
+        data[0] = 0x71;
+        data[1] = 0x20;
         let err = parse_mibeacon_mac(&data).unwrap_err();
         let source = std::error::Error::source(&err).unwrap();
-        assert!(source.to_string().contains("13 bytes"));
+        assert!(source.to_string().contains("11 bytes"));
+    }
+
+    #[test]
+    fn should_reject_mibeacon_without_mac_flag() {
+        // Frame Control 0x2061 — bit 4 clear (no MAC included)
+        let data: [u8; 11] = [
+            0x61, 0x20, 0x98, 0x00, 0x03, 0x34, 0x12, 0x6A, 0x8D, 0x7C, 0xC4,
+        ];
+        let err = parse_mibeacon_mac(&data).unwrap_err();
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.to_string().contains("MAC address"));
     }
 
     // build_discovered

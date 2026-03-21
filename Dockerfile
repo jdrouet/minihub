@@ -15,13 +15,14 @@ COPY crates/adapters/storage_sqlite_sqlx/Cargo.toml /code/crates/adapters/storag
 COPY crates/adapters/virtual/Cargo.toml /code/crates/adapters/virtual/Cargo.toml
 COPY crates/adapters/mqtt/Cargo.toml /code/crates/adapters/mqtt/Cargo.toml
 COPY crates/adapters/ble/Cargo.toml /code/crates/adapters/ble/Cargo.toml
+COPY crates/adapters/plants/Cargo.toml /code/crates/adapters/plants/Cargo.toml
 COPY crates/bin/minihubd/Cargo.toml /code/crates/bin/minihubd/Cargo.toml
 
 RUN set -eux; \
     for crate in domain app; do \
     mkdir -p "crates/${crate}/src" && touch "crates/${crate}/src/lib.rs"; \
     done; \
-    for adapter in http_axum storage_sqlite_sqlx virtual mqtt ble; do \
+    for adapter in http_axum storage_sqlite_sqlx virtual mqtt ble plants; do \
     mkdir -p "crates/adapters/${adapter}/src" && touch "crates/adapters/${adapter}/src/lib.rs"; \
     done; \
     mkdir -p crates/bin/minihubd/src && echo "fn main() {}" > crates/bin/minihubd/src/main.rs
@@ -43,13 +44,14 @@ COPY crates/adapters/storage_sqlite_sqlx/Cargo.toml /code/crates/adapters/storag
 COPY crates/adapters/virtual/Cargo.toml /code/crates/adapters/virtual/Cargo.toml
 COPY crates/adapters/mqtt/Cargo.toml /code/crates/adapters/mqtt/Cargo.toml
 COPY crates/adapters/ble/Cargo.toml /code/crates/adapters/ble/Cargo.toml
+COPY crates/adapters/plants/Cargo.toml /code/crates/adapters/plants/Cargo.toml
 COPY crates/bin/minihubd/Cargo.toml /code/crates/bin/minihubd/Cargo.toml
 
 RUN set -eux; \
     for crate in domain app; do \
     mkdir -p "crates/${crate}/src" && touch "crates/${crate}/src/lib.rs"; \
     done; \
-    for adapter in http_axum storage_sqlite_sqlx virtual mqtt ble; do \
+    for adapter in http_axum storage_sqlite_sqlx virtual mqtt ble plants; do \
     mkdir -p "crates/adapters/${adapter}/src" && touch "crates/adapters/${adapter}/src/lib.rs"; \
     done; \
     mkdir -p crates/bin/minihubd/src && echo "fn main() {}" > crates/bin/minihubd/src/main.rs
